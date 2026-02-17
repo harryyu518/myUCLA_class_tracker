@@ -39,9 +39,39 @@ Recent logs:
 journalctl -u myucla-monitor -n 120 -l --no-pager
 ```
 
-## 3) Re-auth flow when session expires
+## 3) Change monitored URL (single-source)
 
-### 3.1 Mac terminal: refresh local session
+Only edit `config.py`:
+
+```python
+CLASSSEARCH_URL = os.getenv("CLASSSEARCH_URL", "<new class search url>")
+```
+
+Do not edit `targets.json` for URL changes (`targets.json` now references `config.CLASSSEARCH_URL`).
+
+Apply the change on VM:
+
+Mac terminal:
+
+```bash
+cd "$LOCAL_REPO"
+git add config.py targets.json
+git commit -m "Update monitored ClassSearch URL"
+git push
+```
+
+VM terminal:
+
+```bash
+cd "$REMOTE_REPO"
+git pull
+sudo systemctl restart myucla-monitor
+journalctl -u myucla-monitor -n 80 -l --no-pager
+```
+
+## 4) Re-auth flow when session expires
+
+### 4.1 Mac terminal: refresh local session
 
 ```bash
 cd "$LOCAL_REPO"
@@ -51,20 +81,20 @@ launchctl bootout gui/$(id -u)/com.myucla.classsearch.monitor 2>/dev/null || tru
 
 Complete Duo in browser, then press Enter in the terminal running `login_save.py`.
 
-### 3.2 Mac terminal: copy new storage.json to VM
+### 4.2 Mac terminal: copy new storage.json to VM
 
 ```bash
 scp -i "$SSH_KEY" "$LOCAL_REPO/storage.json" "$VM_USER@$VM_IP:$REMOTE_REPO/storage.json"
 ```
 
-### 3.3 VM terminal: restart monitor
+### 4.3 VM terminal: restart monitor
 
 ```bash
 sudo systemctl restart myucla-monitor
 journalctl -u myucla-monitor -n 80 -l --no-pager
 ```
 
-## 4) Sync VM snapshots to local for viewing (Mac terminal)
+## 5) Sync VM snapshots to local for viewing (Mac terminal)
 
 Install `rsync` once on VM (VM terminal):
 
@@ -89,7 +119,7 @@ rsync -avz --delete -e "ssh -i $SSH_KEY" \
   "$LOCAL_REPO/snapshots/"
 ```
 
-## 5) Quick health checks
+## 6) Quick health checks
 
 VM snapshots:
 

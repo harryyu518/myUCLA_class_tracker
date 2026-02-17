@@ -1,11 +1,11 @@
 {
   "targets": {
-    "classsearch_cs143": {
+    "classsearch_ecengr149": {
       "enabled": true,
       "type": "classsearch",
-      "url": "https://sa.ucla.edu/ro/ClassSearch/Results?SubjectAreaName=Computer+Science+(COM+SCI)&CrsCatlgName=143+-+Data+Management+Systems&t=26S&sBy=subject&subj=COM+SCI&catlg=0143&cls_no=%25&undefined=Go&btnIsInIndex=btn_inIndex",
+      "url_source": "config.CLASSSEARCH_URL",
       "poll_interval": 90,
-      "description": "CS 143 (Data Management Systems) enrollment status"
+      "description": "EC ENGR 149 (Foundations of Computer Vision) enrollment status"
     }
   }
 }
