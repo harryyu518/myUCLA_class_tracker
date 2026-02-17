@@ -40,7 +40,7 @@ USER_DATA_DIR.mkdir(exist_ok=True)
 # ClassSearch Configuration
 CLASSSEARCH_URL = os.getenv(
     "CLASSSEARCH_URL",
-    "https://sa.ucla.edu/ro/ClassSearch/Results?SubjectAreaName=Computer+Science+(COM+SCI)&CrsCatlgName=143+-+Data+Management+Systems&t=26S&sBy=subject&subj=COM+SCI&catlg=0143&cls_no=%25&undefined=Go&btnIsInIndex=btn_inIndex",
+    "https://sa.ucla.edu/ro/ClassSearch/Results?SubjectAreaName=Electrical+and+Computer+Engineering+(EC+ENGR)&CrsCatlgName=149+-+Foundations+of+Computer+Vision&t=26S&sBy=subject&subj=EC+ENGR&catlg=0149&cls_no=%25&undefined=Go&btnIsInIndex=btn_inIndex",
 )
 CLASSSEARCH_POLL_INTERVAL = _env_int("CLASSSEARCH_POLL_INTERVAL", 60)  # seconds
 # Match only timestamped ClassSearch snapshots (classsearch_YYYYMMDD_HHMMSS.html)
