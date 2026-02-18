@@ -84,7 +84,7 @@ Complete Duo in browser, then press Enter in the terminal running `login_save.py
 ### 4.2 Mac terminal: copy new storage.json to VM
 
 ```bash
-scp -i "$SSH_KEY" "$LOCAL_REPO/storage.json" "$VM_USER@$VM_IP:$REMOTE_REPO/storage.json"
+scp -i <SSH_KEY_PATH> storage.json ubuntu@<VM_IP>:~/myucla_tracker/storage.json
 ```
 
 ### 4.3 VM terminal: restart monitor

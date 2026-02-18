@@ -57,3 +57,4 @@ htmlcov/
 snapshots/*.html
 snapshots/*.err
 snapshots/*.log
+VM_COMMANDS.md
