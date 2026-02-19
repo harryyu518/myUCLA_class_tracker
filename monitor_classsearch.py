@@ -5,7 +5,7 @@ Monitor UCLA ClassSearch page for enrollment changes.
 - Fetches page every N seconds
 - Saves snapshots with timestamps in the snapshots/ directory
 - Keeps only the 5 most recent snapshots
-- Compares snapshots and notifies via Pushover if content changes
+- Compares class status values and notifies via Pushover on status change
 - Detects and alerts on SSO/login page (session expiration)
 """
 
@@ -95,12 +95,18 @@ def monitor_classsearch():
                     config.MAX_SNAPSHOTS_TO_KEEP
                 )
 
-                # Compare with previous and notify on change
-                if utils.compare_snapshots(
+                # Compare with previous and notify on status change
+                status_changed, status_summary = utils.compare_status_snapshots(
                     config.SNAPSHOTS_DIR,
                     config.CLASSSEARCH_SNAPSHOT_PATTERN
-                ):
-                    message = f"ClassSearch changed at {datetime.now().strftime('%H:%M:%S')}"
+                )
+                if status_changed:
+                    timestamp = datetime.now().strftime('%H:%M:%S')
+                    if status_summary:
+                        message = f"ClassSearch status changed at {timestamp}: {status_summary}"
+                    else:
+                        message = f"ClassSearch status changed at {timestamp}"
+                    message = message[:1024]
                     utils.send_pushover_notification(message, title="ClassSearch Monitor")
 
             except Exception as e:

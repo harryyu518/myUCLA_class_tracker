@@ -11,6 +11,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 from playwright.sync_api import sync_playwright
+from bs4 import BeautifulSoup
 import config
 
 # Setup logging
@@ -169,6 +170,86 @@ def compare_snapshots(snapshot_dir: Path, pattern: str) -> bool:
     else:
         logger.info("Content changed!")
         return True
+
+
+def extract_classsearch_status_map(html: str) -> dict[str, str]:
+    """Extract class status text keyed by class row ID from ClassSearch HTML."""
+    soup = BeautifulSoup(html, "html.parser")
+    statuses: dict[str, str] = {}
+
+    for node in soup.select("div.statusColumn[id$='-status_data']"):
+        node_id = node.get("id")
+        if not node_id:
+            continue
+        class_id = node_id.removesuffix("-status_data")
+        status_text = re.sub(r"\s+", " ", " ".join(node.stripped_strings)).strip()
+        if status_text:
+            statuses[class_id] = status_text
+
+    return statuses
+
+
+def summarize_status_changes(
+    prev_statuses: dict[str, str], curr_statuses: dict[str, str], max_items: int = 3
+) -> str:
+    """Build a short human-readable summary of class status changes."""
+    changes: list[str] = []
+    all_keys = sorted(set(prev_statuses) | set(curr_statuses))
+
+    for class_id in all_keys:
+        prev_value = prev_statuses.get(class_id)
+        curr_value = curr_statuses.get(class_id)
+        if prev_value == curr_value:
+            continue
+        if prev_value is None:
+            changes.append(f"{class_id}: added -> {curr_value}")
+        elif curr_value is None:
+            changes.append(f"{class_id}: {prev_value} -> removed")
+        else:
+            changes.append(f"{class_id}: {prev_value} -> {curr_value}")
+
+    if not changes:
+        return ""
+
+    summary = "; ".join(changes[:max_items])
+    if len(changes) > max_items:
+        summary += f"; +{len(changes) - max_items} more"
+    return summary
+
+
+def compare_status_snapshots(snapshot_dir: Path, pattern: str) -> tuple[bool, str]:
+    """Compare status values in the 2 most recent snapshots.
+
+    Returns:
+        (changed, summary) where summary describes the status diff.
+    """
+    files = get_sorted_snapshots(snapshot_dir, pattern)
+    if len(files) < 2:
+        return False, ""
+
+    prev_html = files[-2].read_text(encoding="utf-8")
+    curr_html = files[-1].read_text(encoding="utf-8")
+    prev_statuses = extract_classsearch_status_map(prev_html)
+    curr_statuses = extract_classsearch_status_map(curr_html)
+
+    if prev_statuses or curr_statuses:
+        if prev_statuses == curr_statuses:
+            logger.info("No status change detected in snapshots")
+            return False, ""
+
+        summary = summarize_status_changes(prev_statuses, curr_statuses)
+        logger.info(f"Status changed! {summary}")
+        return True, summary
+
+    logger.warning("No status rows found in snapshots; falling back to normalized HTML compare")
+    prev_norm = normalize_html(prev_html)
+    curr_norm = normalize_html(curr_html)
+    if prev_norm == curr_norm:
+        logger.info("No change detected in snapshots")
+        return False, ""
+
+    logger.info("Content changed!")
+    return True, ""
 
 
 def send_pushover_notification(message: str, title: str = "UCLA Tracker") -> bool:
