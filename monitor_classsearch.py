@@ -27,6 +27,9 @@ def monitor_classsearch():
         return
 
     utils.sync_classsearch_snapshot_dirs(config.SNAPSHOTS_DIR, targets)
+    removed_root_files = utils.cleanup_legacy_root_classsearch_snapshots(config.SNAPSHOTS_DIR)
+    if removed_root_files:
+        logger.info(f"Removed {removed_root_files} legacy root classsearch snapshot(s)")
     logger.info(f"Tracking {len(targets)} ClassSearch target(s)")
     for target in targets:
         logger.info(f"- {target['name']}: {target['url']}")

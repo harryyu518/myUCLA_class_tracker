@@ -204,6 +204,26 @@ def sync_classsearch_snapshot_dirs(snapshot_root: Path, targets: list[dict[str, 
         logger.info(f"Deleted snapshot folder for removed URL: {child}")
 
 
+def cleanup_legacy_root_classsearch_snapshots(snapshot_root: Path) -> int:
+    """Delete legacy classsearch snapshots in snapshots/ root (non-subfolder)."""
+    deleted = 0
+    patterns = [
+        config.CLASSSEARCH_SNAPSHOT_PATTERN,
+        config.CLASSSEARCH_SSO_SNAPSHOT_PATTERN,
+    ]
+    for pattern in patterns:
+        for file_path in snapshot_root.glob(pattern):
+            if not file_path.is_file():
+                continue
+            try:
+                file_path.unlink()
+                deleted += 1
+                logger.info(f"Deleted legacy root snapshot: {file_path}")
+            except Exception as e:
+                logger.warning(f"Failed to delete legacy root snapshot {file_path}: {e}")
+    return deleted
+
+
 def get_sorted_snapshots(snapshot_dir: Path, pattern: str) -> list[Path]:
     """Return list of snapshot files sorted by timestamp (oldest first)."""
     files = list(snapshot_dir.glob(pattern))
