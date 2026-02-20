@@ -55,6 +55,7 @@ htmlcov/
 
 # Project-specific
 snapshots/*.html
+snapshots/**/*.html
 snapshots/*.err
 snapshots/*.log
 VM_COMMANDS.md
