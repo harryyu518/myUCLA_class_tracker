@@ -4,12 +4,28 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 LOCAL_REPO="${LOCAL_REPO:-$SCRIPT_DIR}"
-VM_IP="${VM_IP:-<VM_IP>}"
+VM_IP="${VM_IP:-}"
 VM_USER="${VM_USER:-ubuntu}"
-SSH_KEY="${SSH_KEY:-<SSH_KEY_PATH>}"
+SSH_KEY="${SSH_KEY:-}"
 REMOTE_REPO="${REMOTE_REPO:-/home/$VM_USER/myucla_tracker}"
 SERVICE_NAME="${SERVICE_NAME:-myucla-monitor}"
 SKIP_LOCAL_STOP="${SKIP_LOCAL_STOP:-0}"
+
+if [[ -z "$VM_IP" || "$VM_IP" == "<VM_IP>" ]]; then
+  VM_IP="64.181.255.201"
+fi
+
+if [[ -z "$SSH_KEY" || "$SSH_KEY" == "<SSH_KEY_PATH>" ]]; then
+  SSH_KEY="$HOME/.ssh/id_ed25519"
+fi
+
+if [[ "$SSH_KEY" == "~/"* ]]; then
+  SSH_KEY="$HOME/${SSH_KEY#~/}"
+fi
+
+if [[ "$REMOTE_REPO" == "<REMOTE_REPO>" ]]; then
+  REMOTE_REPO="/home/$VM_USER/myucla_tracker"
+fi
 
 log() {
   printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"
