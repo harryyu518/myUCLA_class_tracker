@@ -20,11 +20,16 @@ It is designed to survive normal session expiration by:
    python3 -m venv venv
    ./venv/bin/pip install -r requirements.txt
    ```
-2. Log in once and save auth state:
+2. Create local runtime config (recommended):
+   ```bash
+   cp .env.example .env.local
+   ```
+   Fill secrets (for example `PUSHOVER_APP_TOKEN`, `PUSHOVER_USER_KEY`) in `.env.local`.
+3. Log in once and save auth state:
    ```bash
    ./venv/bin/python login_save.py
    ```
-3. Run monitor:
+4. Run monitor:
    ```bash
    ./venv/bin/python monitor_classsearch.py
    ```
@@ -124,6 +129,12 @@ Most important settings:
 - `PUSHOVER_*`: notification configuration
 
 Many settings can also be overridden via environment variables.
+
+### Secret handling
+
+- Do not store secrets in committed files.
+- Use `.env.local` (gitignored) for local tokens/keys.
+- Keep `storage.json`, `pw_user_data/`, and `snapshots/` out of git.
 
 ## Running modes
 

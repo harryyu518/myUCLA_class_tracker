@@ -2,6 +2,9 @@
 venv/
 env/
 .env
+.env.local
+.env.*
+!.env.example
 .venv
 
 # Session & Authentication (SENSITIVE)
@@ -54,8 +57,6 @@ MANIFEST
 htmlcov/
 
 # Project-specific
-snapshots/*.html
-snapshots/**/*.html
-snapshots/*.err
-snapshots/*.log
+snapshots/**
+!snapshots/.gitkeep
 VM_COMMANDS.md

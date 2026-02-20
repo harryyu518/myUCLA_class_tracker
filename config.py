@@ -6,6 +6,28 @@ import os
 from pathlib import Path
 
 
+def _load_env_file(env_file: Path) -> None:
+    """Load KEY=VALUE pairs from a local .env-style file into os.environ.
+
+    Existing environment variables are not overridden.
+    """
+    if not env_file.exists():
+        return
+
+    for raw_line in env_file.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+
+        key, value = line.split("=", 1)
+        key = key.strip()
+        if not key:
+            continue
+
+        value = value.strip().strip('"').strip("'")
+        os.environ.setdefault(key, value)
+
+
 def _env_int(name: str, default: int) -> int:
     """Read integer from environment, fallback to default if invalid."""
     value = os.getenv(name)
@@ -25,8 +47,12 @@ def _env_bool(name: str, default: bool) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
-# Project paths
 PROJECT_ROOT = Path(__file__).resolve().parent
+# Load local env files for secrets/runtime overrides.
+_load_env_file(PROJECT_ROOT / ".env.local")
+_load_env_file(PROJECT_ROOT / ".env")
+
+# Project paths
 SNAPSHOTS_DIR = PROJECT_ROOT / "snapshots"
 CONFIG_DIR = PROJECT_ROOT / "config"
 USER_DATA_DIR = PROJECT_ROOT / "pw_user_data"
@@ -46,8 +72,8 @@ CLASSSEARCH_URL_1 = os.getenv(
         "https://sa.ucla.edu/ro/ClassSearch/Results?SubjectAreaName=Electrical+and+Computer+Engineering+(EC+ENGR)&CrsCatlgName=149+-+Foundations+of+Computer+Vision&t=26S&sBy=subject&subj=EC+ENGR&catlg=0149&cls_no=%25&undefined=Go&btnIsInIndex=btn_inIndex",
     ),
 )
-CLASSSEARCH_URL_2 = os.getenv("CLASSSEARCH_URL_2", "https://sa.ucla.edu/ro/ClassSearch/Results?SubjectAreaName=Film+and+Television+(FILM+TV)&CrsCatlgName=4+-+Introduction+to+Art+and+Technique+of+Filmmaking&t=26S&sBy=subject&subj=FILM+TV&catlg=0004&cls_no=%25&undefined=Go&btnIsInIndex=btn_inIndex")
-CLASSSEARCH_URL_3 = os.getenv("CLASSSEARCH_URL_3", "https://sa.ucla.edu/ro/ClassSearch/Results?SubjectAreaName=Mathematics+(MATH)&CrsCatlgName=155+-+Mathematical+Imaging&t=26S&sBy=subject&subj=MATH+++&catlg=0155&cls_no=%25&undefined=Go&btnIsInIndex=btn_inIndex")
+CLASSSEARCH_URL_2 = os.getenv("CLASSSEARCH_URL_2", "")
+CLASSSEARCH_URL_3 = os.getenv("CLASSSEARCH_URL_3", "")
 CLASSSEARCH_URL_4 = os.getenv("CLASSSEARCH_URL_4", "")
 CLASSSEARCH_URL_5 = os.getenv("CLASSSEARCH_URL_5", "")
 CLASSSEARCH_URL_6 = os.getenv("CLASSSEARCH_URL_6", "")
@@ -86,8 +112,8 @@ CLASSPLANNER_SNAPSHOT_PATTERN = f"{CLASSPLANNER_SNAPSHOT_PREFIX}_*.html"
 
 # Pushover Notifications (optional, from env vars)
 PUSHOVER_API_URL = os.getenv("PUSHOVER_API_URL", "https://api.pushover.net/1/messages.json")
-PUSHOVER_APP_TOKEN = os.getenv("PUSHOVER_APP_TOKEN", "REDACTED_PUSHOVER_APP_TOKEN")
-PUSHOVER_USER_KEY = os.getenv("PUSHOVER_USER_KEY", "REDACTED_PUSHOVER_USER_KEY")
+PUSHOVER_APP_TOKEN = os.getenv("PUSHOVER_APP_TOKEN", "")
+PUSHOVER_USER_KEY = os.getenv("PUSHOVER_USER_KEY", "")
 
 # Snapshot Retention Policy
 MAX_SNAPSHOTS_TO_KEEP = _env_int("MAX_SNAPSHOTS_TO_KEEP", 5)
