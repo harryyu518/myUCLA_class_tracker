@@ -65,22 +65,17 @@ USER_DATA_DIR.mkdir(exist_ok=True)
 
 # ClassSearch Configuration
 # Paste up to 10 ClassSearch URLs below. Leave empty string ("") for unused slots.
-CLASSSEARCH_URL_1 = os.getenv(
-    "CLASSSEARCH_URL_1",
-    os.getenv(
-        "CLASSSEARCH_URL",
-        "https://sa.ucla.edu/ro/ClassSearch/Results?SubjectAreaName=Electrical+and+Computer+Engineering+(EC+ENGR)&CrsCatlgName=149+-+Foundations+of+Computer+Vision&t=26S&sBy=subject&subj=EC+ENGR&catlg=0149&cls_no=%25&undefined=Go&btnIsInIndex=btn_inIndex",
-    ),
-)
-CLASSSEARCH_URL_2 = os.getenv("CLASSSEARCH_URL_2", "")
-CLASSSEARCH_URL_3 = os.getenv("CLASSSEARCH_URL_3", "")
-CLASSSEARCH_URL_4 = os.getenv("CLASSSEARCH_URL_4", "")
-CLASSSEARCH_URL_5 = os.getenv("CLASSSEARCH_URL_5", "")
-CLASSSEARCH_URL_6 = os.getenv("CLASSSEARCH_URL_6", "")
-CLASSSEARCH_URL_7 = os.getenv("CLASSSEARCH_URL_7", "")
-CLASSSEARCH_URL_8 = os.getenv("CLASSSEARCH_URL_8", "")
-CLASSSEARCH_URL_9 = os.getenv("CLASSSEARCH_URL_9", "")
-CLASSSEARCH_URL_10 = os.getenv("CLASSSEARCH_URL_10", "")
+# These are tracked in git so VM can update URLs via `git pull`.
+CLASSSEARCH_URL_1 = "https://sa.ucla.edu/ro/ClassSearch/Results?SubjectAreaName=Electrical+and+Computer+Engineering+(EC+ENGR)&CrsCatlgName=149+-+Foundations+of+Computer+Vision&t=26S&sBy=subject&subj=EC+ENGR&catlg=0149&cls_no=%25&undefined=Go&btnIsInIndex=btn_inIndex"
+CLASSSEARCH_URL_2 = "https://sa.ucla.edu/ro/ClassSearch/Results?SubjectAreaName=Film+and+Television+(FILM+TV)&CrsCatlgName=4+-+Introduction+to+Art+and+Technique+of+Filmmaking&t=26S&sBy=subject&subj=FILM+TV&catlg=0004&cls_no=%25&undefined=Go&btnIsInIndex=btn_inIndex"
+CLASSSEARCH_URL_3 = "https://sa.ucla.edu/ro/ClassSearch/Results?SubjectAreaName=Mathematics+(MATH)&CrsCatlgName=155+-+Mathematical+Imaging&t=26S&sBy=subject&subj=MATH+++&catlg=0155&cls_no=%25&undefined=Go&btnIsInIndex=btn_inIndex"
+CLASSSEARCH_URL_4 = ""
+CLASSSEARCH_URL_5 = ""
+CLASSSEARCH_URL_6 = ""
+CLASSSEARCH_URL_7 = ""
+CLASSSEARCH_URL_8 = ""
+CLASSSEARCH_URL_9 = ""
+CLASSSEARCH_URL_10 = ""
 
 _CLASSSEARCH_URL_SLOTS = [
     CLASSSEARCH_URL_1,
