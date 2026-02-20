@@ -92,7 +92,7 @@ _CLASSSEARCH_URL_SLOTS = [
 CLASSSEARCH_URLS = list(dict.fromkeys(url.strip() for url in _CLASSSEARCH_URL_SLOTS if url.strip()))
 # Backwards-compatible single URL alias used by login_save.py and older scripts.
 CLASSSEARCH_URL = CLASSSEARCH_URLS[0] if CLASSSEARCH_URLS else ""
-CLASSSEARCH_POLL_INTERVAL = _env_int("CLASSSEARCH_POLL_INTERVAL", 30)  # seconds
+CLASSSEARCH_POLL_INTERVAL = _env_int("CLASSSEARCH_POLL_INTERVAL", 15)  # seconds
 # Match only timestamped ClassSearch snapshots (classsearch_YYYYMMDD_HHMMSS.html)
 CLASSSEARCH_SNAPSHOT_PATTERN = "classsearch_[0-9]*.html"
 CLASSSEARCH_SSO_SNAPSHOT_PATTERN = "classsearch_sso_*.html"
