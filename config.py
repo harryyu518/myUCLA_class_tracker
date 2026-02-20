@@ -38,10 +38,39 @@ CONFIG_DIR.mkdir(exist_ok=True)
 USER_DATA_DIR.mkdir(exist_ok=True)
 
 # ClassSearch Configuration
-CLASSSEARCH_URL = os.getenv(
-    "CLASSSEARCH_URL",
-    "https://sa.ucla.edu/ro/ClassSearch/Results?SubjectAreaName=Electrical+and+Computer+Engineering+(EC+ENGR)&CrsCatlgName=149+-+Foundations+of+Computer+Vision&t=26S&sBy=subject&subj=EC+ENGR&catlg=0149&cls_no=%25&undefined=Go&btnIsInIndex=btn_inIndex",
+# Paste up to 10 ClassSearch URLs below. Leave empty string ("") for unused slots.
+CLASSSEARCH_URL_1 = os.getenv(
+    "CLASSSEARCH_URL_1",
+    os.getenv(
+        "CLASSSEARCH_URL",
+        "https://sa.ucla.edu/ro/ClassSearch/Results?SubjectAreaName=Electrical+and+Computer+Engineering+(EC+ENGR)&CrsCatlgName=149+-+Foundations+of+Computer+Vision&t=26S&sBy=subject&subj=EC+ENGR&catlg=0149&cls_no=%25&undefined=Go&btnIsInIndex=btn_inIndex",
+    ),
 )
+CLASSSEARCH_URL_2 = os.getenv("CLASSSEARCH_URL_2", "https://sa.ucla.edu/ro/ClassSearch/Results?SubjectAreaName=Film+and+Television+(FILM+TV)&CrsCatlgName=4+-+Introduction+to+Art+and+Technique+of+Filmmaking&t=26S&sBy=subject&subj=FILM+TV&catlg=0004&cls_no=%25&undefined=Go&btnIsInIndex=btn_inIndex")
+CLASSSEARCH_URL_3 = os.getenv("CLASSSEARCH_URL_3", "https://sa.ucla.edu/ro/ClassSearch/Results?SubjectAreaName=Mathematics+(MATH)&CrsCatlgName=155+-+Mathematical+Imaging&t=26S&sBy=subject&subj=MATH+++&catlg=0155&cls_no=%25&undefined=Go&btnIsInIndex=btn_inIndex")
+CLASSSEARCH_URL_4 = os.getenv("CLASSSEARCH_URL_4", "")
+CLASSSEARCH_URL_5 = os.getenv("CLASSSEARCH_URL_5", "")
+CLASSSEARCH_URL_6 = os.getenv("CLASSSEARCH_URL_6", "")
+CLASSSEARCH_URL_7 = os.getenv("CLASSSEARCH_URL_7", "")
+CLASSSEARCH_URL_8 = os.getenv("CLASSSEARCH_URL_8", "")
+CLASSSEARCH_URL_9 = os.getenv("CLASSSEARCH_URL_9", "")
+CLASSSEARCH_URL_10 = os.getenv("CLASSSEARCH_URL_10", "")
+
+_CLASSSEARCH_URL_SLOTS = [
+    CLASSSEARCH_URL_1,
+    CLASSSEARCH_URL_2,
+    CLASSSEARCH_URL_3,
+    CLASSSEARCH_URL_4,
+    CLASSSEARCH_URL_5,
+    CLASSSEARCH_URL_6,
+    CLASSSEARCH_URL_7,
+    CLASSSEARCH_URL_8,
+    CLASSSEARCH_URL_9,
+    CLASSSEARCH_URL_10,
+]
+CLASSSEARCH_URLS = list(dict.fromkeys(url.strip() for url in _CLASSSEARCH_URL_SLOTS if url.strip()))
+# Backwards-compatible single URL alias used by login_save.py and older scripts.
+CLASSSEARCH_URL = CLASSSEARCH_URLS[0] if CLASSSEARCH_URLS else ""
 CLASSSEARCH_POLL_INTERVAL = _env_int("CLASSSEARCH_POLL_INTERVAL", 60)  # seconds
 # Match only timestamped ClassSearch snapshots (classsearch_YYYYMMDD_HHMMSS.html)
 CLASSSEARCH_SNAPSHOT_PATTERN = "classsearch_[0-9]*.html"

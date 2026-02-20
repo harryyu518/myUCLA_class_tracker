@@ -10,9 +10,7 @@ Monitor UCLA ClassSearch page for enrollment changes.
 """
 
 import time
-import logging
 from datetime import datetime
-from pathlib import Path
 
 import config
 import utils
@@ -23,7 +21,16 @@ logger = utils.setup_logger(__name__)
 def monitor_classsearch():
     """Main monitoring loop for ClassSearch page."""
     logger.info("Starting ClassSearch monitor...")
-    logger.info(f"URL: {config.CLASSSEARCH_URL}")
+    targets = utils.build_classsearch_targets(config.CLASSSEARCH_URLS, config.SNAPSHOTS_DIR)
+    if not targets:
+        logger.error("No ClassSearch URLs configured. Set CLASSSEARCH_URL_1..CLASSSEARCH_URL_10 in config.py")
+        return
+
+    utils.sync_classsearch_snapshot_dirs(config.SNAPSHOTS_DIR, targets)
+    logger.info(f"Tracking {len(targets)} ClassSearch target(s)")
+    for target in targets:
+        logger.info(f"- {target['name']}: {target['url']}")
+
     logger.info(f"Poll interval: {config.CLASSSEARCH_POLL_INTERVAL}s")
     
     session = None
@@ -40,28 +47,72 @@ def monitor_classsearch():
 
     try:
         while True:
-            logger.info(f"[Fetch {iteration}] Fetching ClassSearch page...")
+            logger.info(f"[Fetch {iteration}] Fetching {len(targets)} ClassSearch target(s)...")
             try:
-                html = session.fetch(config.CLASSSEARCH_URL)
+                saw_sso = False
+                for target in targets:
+                    target_name = str(target["name"])
+                    target_url = str(target["url"])
+                    snapshot_dir = target["snapshot_dir"]
+                    logger.info(f"[Fetch {iteration}] Fetching {target_name}...")
+                    html = session.fetch(target_url)
 
-                # Detect SSO / login page (session expired)
-                if utils.is_sso_page(html):
-                    logger.warning("Detected SSO/login page — session likely expired")
-                    if not sso_alert_sent:
-                        utils.send_pushover_notification(
-                            "ClassSearch monitor: session expired — please re-login interactively.",
-                            title="ClassSearch Monitor"
+                    # Detect SSO / login page (session expired)
+                    if utils.is_sso_page(html):
+                        logger.warning(
+                            f"Detected SSO/login page while fetching {target_name} — session likely expired"
                         )
-                        sso_alert_sent = True
-                    utils.save_snapshot(html, config.SNAPSHOTS_DIR, "classsearch_sso")
+                        if not sso_alert_sent:
+                            utils.send_pushover_notification(
+                                "ClassSearch monitor: session expired — please re-login interactively.",
+                                title="ClassSearch Monitor",
+                            )
+                            sso_alert_sent = True
+                        utils.save_snapshot(html, snapshot_dir, "classsearch_sso")
+                        utils.rotate_snapshots_by_patterns(
+                            snapshot_dir,
+                            [
+                                config.CLASSSEARCH_SNAPSHOT_PATTERN,
+                                config.CLASSSEARCH_SSO_SNAPSHOT_PATTERN,
+                            ],
+                            config.MAX_SNAPSHOTS_TO_KEEP,
+                        )
+                        saw_sso = True
+                        break
+
+                    # Normal page: reset any SSO alert flag
+                    if sso_alert_sent:
+                        utils.send_pushover_notification(
+                            "ClassSearch monitor: session restored — fetched page successfully.",
+                            title="ClassSearch Monitor",
+                        )
+                        sso_alert_sent = False
+
+                    # Save snapshot and prune old files for this target
+                    utils.save_snapshot(html, snapshot_dir, "classsearch")
                     utils.rotate_snapshots_by_patterns(
-                        config.SNAPSHOTS_DIR,
+                        snapshot_dir,
                         [
                             config.CLASSSEARCH_SNAPSHOT_PATTERN,
                             config.CLASSSEARCH_SSO_SNAPSHOT_PATTERN,
                         ],
                         config.MAX_SNAPSHOTS_TO_KEEP,
                     )
+
+                    # Compare with previous and notify on status change for this target
+                    status_changed, status_summary = utils.compare_status_snapshots(
+                        snapshot_dir, config.CLASSSEARCH_SNAPSHOT_PATTERN
+                    )
+                    if status_changed:
+                        timestamp = datetime.now().strftime("%H:%M:%S")
+                        if status_summary:
+                            message = f"{target_name} status changed at {timestamp}: {status_summary}"
+                        else:
+                            message = f"{target_name} status changed at {timestamp}"
+                        message = message[:1024]
+                        utils.send_pushover_notification(message, title="ClassSearch Monitor")
+
+                if saw_sso:
                     # Reload context from storage.json so a fresh login_save.py
                     # is picked up without requiring a manual monitor restart.
                     try:
@@ -75,39 +126,6 @@ def monitor_classsearch():
                     time.sleep(config.CLASSSEARCH_POLL_INTERVAL)
                     iteration += 1
                     continue
-
-                # Normal page: reset any SSO alert flag
-                if sso_alert_sent:
-                    utils.send_pushover_notification(
-                        "ClassSearch monitor: session restored — fetched page successfully.",
-                        title="ClassSearch Monitor"
-                    )
-                    sso_alert_sent = False
-
-                # Save snapshot and prune old files
-                utils.save_snapshot(html, config.SNAPSHOTS_DIR, "classsearch")
-                utils.rotate_snapshots_by_patterns(
-                    config.SNAPSHOTS_DIR, 
-                    [
-                        config.CLASSSEARCH_SNAPSHOT_PATTERN,
-                        config.CLASSSEARCH_SSO_SNAPSHOT_PATTERN,
-                    ],
-                    config.MAX_SNAPSHOTS_TO_KEEP
-                )
-
-                # Compare with previous and notify on status change
-                status_changed, status_summary = utils.compare_status_snapshots(
-                    config.SNAPSHOTS_DIR,
-                    config.CLASSSEARCH_SNAPSHOT_PATTERN
-                )
-                if status_changed:
-                    timestamp = datetime.now().strftime('%H:%M:%S')
-                    if status_summary:
-                        message = f"ClassSearch status changed at {timestamp}: {status_summary}"
-                    else:
-                        message = f"ClassSearch status changed at {timestamp}"
-                    message = message[:1024]
-                    utils.send_pushover_notification(message, title="ClassSearch Monitor")
 
             except Exception as e:
                 logger.error(f"Error during fetch: {e}")

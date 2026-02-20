@@ -5,11 +5,13 @@ Shared utilities for UCLA Tracker monitoring scripts.
 import os
 import re
 import glob
+import shutil
 import logging
 import requests
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
+from urllib.parse import parse_qs, unquote_plus, urlsplit
 from playwright.sync_api import sync_playwright
 from bs4 import BeautifulSoup
 import config
@@ -20,6 +22,7 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
+TARGET_URL_MARKER_FILE = ".target_url"
 
 
 def setup_logger(name: str) -> logging.Logger:
@@ -100,6 +103,105 @@ def normalize_html(html: str) -> str:
     # Normalize whitespace
     html = re.sub(r'\s+', ' ', html)
     return html.strip()
+
+
+def _normalize_course_number(raw_value: str) -> str:
+    """Normalize course number strings (e.g. 0143 -> 143)."""
+    value = raw_value.strip()
+    if re.fullmatch(r"\d+", value):
+        return str(int(value))
+    return value
+
+
+def _sanitize_folder_name(folder_name: str) -> str:
+    """Sanitize user-facing folder names for filesystem safety."""
+    name = re.sub(r'[<>:"/\\|?*\x00-\x1f]', " ", folder_name)
+    name = re.sub(r"\s+", " ", name).strip()
+    return name
+
+
+def get_classsearch_course_label(url: str, fallback_index: int) -> str:
+    """Build a folder/display label from ClassSearch URL parameters."""
+    query = parse_qs(urlsplit(url).query)
+
+    subject_code = unquote_plus((query.get("subj", [""])[0] or "")).strip()
+    catalog_number = unquote_plus((query.get("catlg", [""])[0] or "")).strip()
+    catalog_number = _normalize_course_number(catalog_number)
+
+    if not subject_code:
+        subject_area = unquote_plus((query.get("SubjectAreaName", [""])[0] or "")).strip()
+        match = re.search(r"\(([^)]+)\)", subject_area)
+        if match:
+            subject_code = match.group(1).strip()
+        elif subject_area:
+            subject_code = subject_area
+
+    if not catalog_number:
+        catalog_name = unquote_plus((query.get("CrsCatlgName", [""])[0] or "")).strip()
+        match = re.search(r"\b(\d+[A-Za-z]*)\b", catalog_name)
+        if match:
+            catalog_number = _normalize_course_number(match.group(1))
+
+    if subject_code and catalog_number:
+        label = f"{subject_code} {catalog_number}"
+    elif subject_code:
+        label = subject_code
+    elif catalog_number:
+        label = f"Course {catalog_number}"
+    else:
+        label = f"ClassSearch Target {fallback_index}"
+
+    safe_label = _sanitize_folder_name(label)
+    return safe_label or f"ClassSearch Target {fallback_index}"
+
+
+def build_classsearch_targets(urls: list[str], snapshot_root: Path) -> list[dict[str, str | Path]]:
+    """Build target metadata from configured URLs."""
+    targets: list[dict[str, str | Path]] = []
+    duplicate_counts: dict[str, int] = {}
+
+    for index, raw_url in enumerate(urls, start=1):
+        url = raw_url.strip()
+        if not url:
+            continue
+        base_name = get_classsearch_course_label(url, fallback_index=index)
+        count = duplicate_counts.get(base_name, 0) + 1
+        duplicate_counts[base_name] = count
+        target_name = base_name if count == 1 else f"{base_name} ({count})"
+        targets.append(
+            {
+                "name": target_name,
+                "url": url,
+                "snapshot_dir": snapshot_root / target_name,
+            }
+        )
+
+    return targets
+
+
+def sync_classsearch_snapshot_dirs(snapshot_root: Path, targets: list[dict[str, str | Path]]) -> None:
+    """Create/update target directories and delete managed folders for removed targets."""
+    snapshot_root.mkdir(parents=True, exist_ok=True)
+    desired_dirs: set[Path] = set()
+
+    for target in targets:
+        target_dir = Path(target["snapshot_dir"])
+        target_url = str(target["url"])
+        target_dir.mkdir(parents=True, exist_ok=True)
+        desired_dirs.add(target_dir.resolve())
+        marker_file = target_dir / TARGET_URL_MARKER_FILE
+        marker_file.write_text(target_url, encoding="utf-8")
+
+    for child in snapshot_root.iterdir():
+        if not child.is_dir():
+            continue
+        marker_file = child / TARGET_URL_MARKER_FILE
+        if not marker_file.exists():
+            continue
+        if child.resolve() in desired_dirs:
+            continue
+        shutil.rmtree(child, ignore_errors=True)
+        logger.info(f"Deleted snapshot folder for removed URL: {child}")
 
 
 def get_sorted_snapshots(snapshot_dir: Path, pattern: str) -> list[Path]:
