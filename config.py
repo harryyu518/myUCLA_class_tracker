@@ -69,7 +69,7 @@ USER_DATA_DIR.mkdir(exist_ok=True)
 CLASSSEARCH_URL_1 = "https://sa.ucla.edu/ro/ClassSearch/Results?SubjectAreaName=Electrical+and+Computer+Engineering+(EC+ENGR)&CrsCatlgName=149+-+Foundations+of+Computer+Vision&t=26S&sBy=subject&subj=EC+ENGR&catlg=0149&cls_no=%25&undefined=Go&btnIsInIndex=btn_inIndex"
 CLASSSEARCH_URL_2 = "https://sa.ucla.edu/ro/ClassSearch/Results?SubjectAreaName=Film+and+Television+(FILM+TV)&CrsCatlgName=4+-+Introduction+to+Art+and+Technique+of+Filmmaking&t=26S&sBy=subject&subj=FILM+TV&catlg=0004&cls_no=%25&undefined=Go&btnIsInIndex=btn_inIndex"
 CLASSSEARCH_URL_3 = "https://sa.ucla.edu/ro/ClassSearch/Results?SubjectAreaName=Mathematics+(MATH)&CrsCatlgName=155+-+Mathematical+Imaging&t=26S&sBy=subject&subj=MATH+++&catlg=0155&cls_no=%25&undefined=Go&btnIsInIndex=btn_inIndex"
-CLASSSEARCH_URL_4 = ""
+CLASSSEARCH_URL_4 = "https://sa.ucla.edu/ro/ClassSearch/Results?SubjectAreaName=Statistics+(STATS)&CrsCatlgName=100C+-+Linear+Models&t=261&s_g_cd=%25&sBy=subject&subj=STATS++&catlg=0100C&cls_no=%25&advanced=y&enrollment_status=O&enrollment_status=W&enrollment_status=C&enrollment_status=X&enrollment_status=T&enrollment_status=S&meet_locations=noop&meet_days=M&meet_days=T&meet_days=W&meet_days=R&meet_days=F&meet_days=S&meet_days=U&meet_times=6%3A00+am&meet_times=11%3A59+pm&meet_units=noop&class_career=noop&impacted=noop&enrollment_restrictions=noop&enforced_requisites=noop&individual_studies=noop&btnIsInIndex=btn_inIndex"
 CLASSSEARCH_URL_5 = ""
 CLASSSEARCH_URL_6 = ""
 CLASSSEARCH_URL_7 = ""
