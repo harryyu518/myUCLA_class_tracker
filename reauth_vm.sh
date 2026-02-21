@@ -77,7 +77,7 @@ if [[ "$LOCAL_SHA" != "$REMOTE_SHA" ]]; then
 fi
 
 log "Running VM preflight is_sso check for all configured ClassSearch URLs"
-ssh -i "$SSH_KEY" "$VM_USER@$VM_IP" "cd '$REMOTE_REPO' && ./venv/bin/python - <<'PY'
+ssh -i "$SSH_KEY" "$VM_USER@$VM_IP" "cd '$REMOTE_REPO' && ./venv/bin/python -u - <<'PY'
 import config
 import utils
 
