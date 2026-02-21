@@ -11,6 +11,7 @@ Monitor UCLA ClassSearch page for enrollment changes.
 
 import time
 from datetime import datetime
+from pathlib import Path
 
 import config
 import utils
@@ -38,7 +39,9 @@ def monitor_classsearch():
     
     session = None
     sso_alert_sent = False
+    sso_alert_target_name: str | None = None
     iteration = 0
+    last_target_name = "unknown target"
     
     try:
         session = utils.PlaywrightSession(config.STORAGE_FILE)
@@ -54,9 +57,10 @@ def monitor_classsearch():
             try:
                 saw_sso = False
                 for target in targets:
-                    target_name = str(target["name"])
+                    snapshot_dir = Path(target["snapshot_dir"])
+                    target_name = snapshot_dir.name
+                    last_target_name = target_name
                     target_url = str(target["url"])
-                    snapshot_dir = target["snapshot_dir"]
                     logger.info(f"[Fetch {iteration}] Fetching {target_name}...")
                     html = session.fetch(target_url)
 
@@ -67,10 +71,14 @@ def monitor_classsearch():
                         )
                         if not sso_alert_sent:
                             utils.send_pushover_notification(
-                                "ClassSearch monitor: session expired — please re-login interactively.",
+                                (
+                                    f"ClassSearch monitor ({target_name}): "
+                                    "session expired — please re-login interactively."
+                                ),
                                 title="ClassSearch Monitor",
                             )
                             sso_alert_sent = True
+                            sso_alert_target_name = target_name
                         utils.save_snapshot(html, snapshot_dir, "classsearch_sso")
                         utils.rotate_snapshots_by_patterns(
                             snapshot_dir,
@@ -86,10 +94,15 @@ def monitor_classsearch():
                     # Normal page: reset any SSO alert flag
                     if sso_alert_sent:
                         utils.send_pushover_notification(
-                            "ClassSearch monitor: session restored — fetched page successfully.",
+                            (
+                                "ClassSearch monitor "
+                                f"({sso_alert_target_name or target_name}): "
+                                "session restored — fetched page successfully."
+                            ),
                             title="ClassSearch Monitor",
                         )
                         sso_alert_sent = False
+                        sso_alert_target_name = None
 
                     # Save snapshot and prune old files for this target
                     utils.save_snapshot(html, snapshot_dir, "classsearch")
@@ -131,7 +144,7 @@ def monitor_classsearch():
                     continue
 
             except Exception as e:
-                logger.error(f"Error during fetch: {e}")
+                logger.error(f"Error during fetch for {last_target_name}: {e}")
                 try:
                     logger.info("Attempting to restart Playwright session...")
                     session.close()
@@ -140,7 +153,7 @@ def monitor_classsearch():
                 except Exception as e2:
                     logger.error(f"Failed to restart session: {e2}")
                     utils.send_pushover_notification(
-                        f"ClassSearch monitor error: {e2}",
+                        f"ClassSearch monitor error ({last_target_name}): {e2}",
                         title="ClassSearch Monitor Error"
                     )
 
