@@ -3,7 +3,7 @@
 # Runs the ClassSearch page monitor via the project's virtual environment
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+REPO_ROOT="$SCRIPT_DIR"
 cd "$REPO_ROOT" || exit 1
 
 # Optional: Set Pushover credentials (or export them in your shell environment)

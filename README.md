@@ -10,7 +10,7 @@ It is designed to survive normal session expiration by:
 
 - Persisting login state in `storage.json`
 - Detecting SSO/login pages
-- Letting you re-auth with `scripts/local/reauth_local.sh` (local) and `scripts/vm/reauth_vm.sh` (VM)
+- Letting you re-auth with `reauth_local.sh` (local) and `reauth_vm.sh` (VM)
 - Reloading Playwright context from updated storage state
 
 ## Quick start
@@ -38,11 +38,11 @@ It is designed to survive normal session expiration by:
 
 - Local machine (refresh auth + validate env + preflight all targets):
   ```bash
-  ./scripts/local/reauth_local.sh
+  ./reauth_local.sh
   ```
 - VM host (validate env + preflight + restart service):
   ```bash
-  ./scripts/vm/reauth_vm.sh
+  ./reauth_vm.sh
   ```
 
 Both require `.env.local` and fail fast if required keys are missing (poll intervals, runtime settings, or all ClassSearch URL slots empty).
@@ -184,13 +184,10 @@ myucla_tracker/
 ├── login_save.py                  # Interactive auth + storage.json refresh
 ├── extract_snippet.py             # ClassPlanner monitor (separate flow)
 ├── test_push.py                   # Pushover verification script
-├── scripts/
-│   ├── local/                     # Local scripts
-│   │   ├── reauth_local.sh
-│   │   ├── run_monitor.sh
-│   │   └── run_monitor_classsearch.sh
-│   └── vm/                        # VM scripts
-│       └── reauth_vm.sh
+├── reauth_local.sh                # Local re-auth script
+├── reauth_vm.sh                   # VM re-auth script (can orchestrate from local)
+├── run_monitor.sh                 # ClassPlanner monitor launcher
+├── run_monitor_classsearch.sh     # ClassSearch monitor launcher
 ├── docs/runbooks/                 # Operational runbooks
 │   ├── REAUTH_RUNBOOK.md
 │   └── VM_RUNBOOK.md
@@ -215,7 +212,7 @@ You are likely using system Python. Use:
 
 1. Re-auth:
    ```bash
-   ./scripts/local/reauth_local.sh
+   ./reauth_local.sh
    ```
 2. If running via LaunchAgent, restart:
    ```bash

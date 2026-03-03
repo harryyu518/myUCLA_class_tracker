@@ -55,13 +55,12 @@ class PlaywrightSession:
         self._context = self._browser.new_context(storage_state=self.storage_state)
         self._page = self._context.new_page()
 
-    def fetch(self, url: str, wait: str = "networkidle", timeout: int | None = None) -> str:
+    def fetch(self, url: str, wait: str = "domcontentloaded", timeout: int | None = None) -> str:
         """Fetch content from a URL and return page HTML."""
         if not self._page:
             raise RuntimeError("Playwright session is not started")
         timeout_ms = config.PLAYWRIGHT_TIMEOUT if timeout is None else timeout
         self._page.goto(url, wait_until=wait, timeout=timeout_ms)
-        self._page.wait_for_load_state(wait)
         return self._page.content()
 
     def close(self) -> None:

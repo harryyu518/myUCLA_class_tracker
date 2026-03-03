@@ -2,10 +2,11 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-VM_REPO="${VM_REPO:-$REPO_ROOT}"
-SERVICE_NAME="${SERVICE_NAME:-myucla-monitor}"
-RESTART_SERVICE="${RESTART_SERVICE:-1}"
+REPO_ROOT="$SCRIPT_DIR"
+LOCAL_REPO="${LOCAL_REPO:-$REPO_ROOT}"
+LOCAL_SERVICE_LABEL="${LOCAL_SERVICE_LABEL:-com.myucla.classsearch.monitor}"
+STOP_LOCAL_MONITOR="${STOP_LOCAL_MONITOR:-0}"
+RESTART_LOCAL_MONITOR="${RESTART_LOCAL_MONITOR:-1}"
 
 log() {
   printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"
@@ -77,19 +78,29 @@ print(
 PY
 }
 
-require_cmd sudo
-require_cmd systemctl
-require_cmd journalctl
-require_file "$VM_REPO/venv/bin/python"
-require_file "$VM_REPO/storage.json"
-require_file "$VM_REPO/.env.local"
+require_cmd shasum
+require_file "$LOCAL_REPO/venv/bin/python"
+require_file "$LOCAL_REPO/.env.local"
+require_file "$LOCAL_REPO/login_save.py"
 
-cd "$VM_REPO"
+cd "$LOCAL_REPO"
 
 log "Validating .env.local required keys and runtime settings"
-validate_env_file "$VM_REPO/.env.local"
+validate_env_file "$LOCAL_REPO/.env.local"
 
-log "Running VM preflight is_sso check for all configured ClassSearch URLs"
+if [[ "$STOP_LOCAL_MONITOR" == "1" ]] && command -v launchctl >/dev/null 2>&1; then
+  log "Stopping local LaunchAgent monitor before re-auth"
+  launchctl bootout "gui/$(id -u)/$LOCAL_SERVICE_LABEL" 2>/dev/null || true
+fi
+
+log "Starting interactive local re-auth (complete UCLA + Duo, then press Enter)"
+./venv/bin/python login_save.py
+
+require_file "$LOCAL_REPO/storage.json"
+STORAGE_SHA="$(shasum -a 256 "$LOCAL_REPO/storage.json" | awk '{print $1}')"
+log "Local storage.json SHA256: $STORAGE_SHA"
+
+log "Running local preflight is_sso check for all configured ClassSearch URLs"
 ./venv/bin/python -u - <<'PY'
 import config
 import utils
@@ -122,17 +133,9 @@ if bad:
 print("Preflight passed: all targets returned non-SSO pages")
 PY
 
-if [[ "$RESTART_SERVICE" == "1" ]]; then
-  log "Restarting VM service: $SERVICE_NAME"
-  sudo systemctl restart "$SERVICE_NAME"
+if [[ "$RESTART_LOCAL_MONITOR" == "1" ]] && command -v launchctl >/dev/null 2>&1; then
+  log "Restarting local LaunchAgent monitor"
+  launchctl kickstart -k "gui/$(id -u)/$LOCAL_SERVICE_LABEL" || true
 fi
-
-sleep 3
-
-log "Recent service logs (last 2 minutes)"
-sudo journalctl -u "$SERVICE_NAME" --since "2 minutes ago" -l --no-pager
-
-log "Recent snapshots on VM"
-find snapshots -maxdepth 2 -type f -name "classsearch*.html" | sort | tail -n 20
 
 log "Done"

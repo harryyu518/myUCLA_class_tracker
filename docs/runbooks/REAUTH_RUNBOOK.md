@@ -8,7 +8,7 @@ Run from local repo:
 
 ```bash
 cd /Users/harryyu/Projects/myucla_tracker
-./scripts/local/reauth_local.sh
+./reauth_local.sh
 ```
 
 What it does:
@@ -33,7 +33,7 @@ Run on VM:
 
 ```bash
 cd ~/myucla_tracker
-./scripts/vm/reauth_vm.sh
+./reauth_vm.sh
 ```
 
 What it does:

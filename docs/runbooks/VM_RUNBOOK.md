@@ -70,10 +70,10 @@ ssh -i "$SSH_KEY" "$VM_USER@$VM_IP" "sudo journalctl -u myucla-monitor -n 80 -l 
 
 ```bash
 cd "$LOCAL_REPO"
-./scripts/local/reauth_local.sh
+./reauth_vm.sh
 ```
 
-This validates `.env.local`, runs interactive login, updates `storage.json`, and performs local preflight.
+This opens local interactive login, updates `storage.json`, syncs auth/config to VM, then runs VM preflight + service restart.
 
 ### 4.2 Mac terminal: sync `storage.json` and `.env.local` to VM
 
@@ -86,7 +86,7 @@ scp -i <SSH_KEY_PATH> .env.local ubuntu@<VM_IP>:~/myucla_tracker/.env.local
 
 ```bash
 cd "$REMOTE_REPO"
-./scripts/vm/reauth_vm.sh
+./reauth_vm.sh
 ```
 
 ## 5) Sync VM snapshots to local for viewing (Mac terminal)

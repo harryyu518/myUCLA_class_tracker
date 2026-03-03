@@ -55,6 +55,7 @@ def monitor_classsearch():
 
     try:
         while True:
+            loop_started = time.monotonic()
             logger.info(f"[Fetch {iteration}] Fetching {len(targets)} ClassSearch target(s)...")
             try:
                 saw_sso = False
@@ -64,7 +65,7 @@ def monitor_classsearch():
                     last_target_name = target_name
                     target_url = str(target["url"])
                     logger.info(f"[Fetch {iteration}] Fetching {target_name}...")
-                    html = session.fetch(target_url)
+                    html = session.fetch(target_url, wait="domcontentloaded")
 
                     # Detect SSO / login page (session expired)
                     if utils.is_sso_page(html):
@@ -159,8 +160,17 @@ def monitor_classsearch():
                         title="ClassSearch Monitor Error"
                     )
 
-            logger.info(f"Sleeping {config.CLASSSEARCH_POLL_INTERVAL}s until next fetch...")
-            time.sleep(config.CLASSSEARCH_POLL_INTERVAL)
+            loop_elapsed = time.monotonic() - loop_started
+            sleep_seconds = max(0.0, config.CLASSSEARCH_POLL_INTERVAL - loop_elapsed)
+            if sleep_seconds > 0:
+                logger.info(
+                    f"Loop finished in {loop_elapsed:.2f}s; sleeping {sleep_seconds:.2f}s until next fetch..."
+                )
+                time.sleep(sleep_seconds)
+            else:
+                logger.info(
+                    f"Loop took {loop_elapsed:.2f}s (>= {config.CLASSSEARCH_POLL_INTERVAL}s); starting next fetch immediately"
+                )
             iteration += 1
 
     except KeyboardInterrupt:
