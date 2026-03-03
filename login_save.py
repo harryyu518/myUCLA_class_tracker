@@ -26,7 +26,7 @@ logger.addHandler(handler)
 def main():
     """Perform interactive login and save session storage."""
     if not config.CLASSSEARCH_URL:
-        raise ValueError("No ClassSearch URL configured. Set CLASSSEARCH_URL_1 in config.py.")
+        raise ValueError("No ClassSearch URL configured. Set CLASSSEARCH_URL_1 in .env.local or .env.")
 
     logger.info("Starting interactive login session...")
     logger.info(f"Opening browser to: {config.CLASSSEARCH_URL}")

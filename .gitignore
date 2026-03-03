@@ -59,4 +59,3 @@ htmlcov/
 # Project-specific
 snapshots/**
 !snapshots/.gitkeep
-VM_COMMANDS.md

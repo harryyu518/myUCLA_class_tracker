@@ -6,7 +6,7 @@
   <string>com.myucla.classplanner.monitor</string>
   <key>ProgramArguments</key>
   <array>
-    <string>/Users/harryyu/Applications/myucla_tracker/run_monitor.sh</string>
+    <string>/Users/harryyu/Applications/myucla_tracker/scripts/local/run_monitor.sh</string>
   </array>
   <key>RunAtLoad</key>
   <true/>

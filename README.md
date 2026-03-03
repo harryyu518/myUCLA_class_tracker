@@ -10,7 +10,7 @@ It is designed to survive normal session expiration by:
 
 - Persisting login state in `storage.json`
 - Detecting SSO/login pages
-- Letting you re-auth interactively with `login_save.py`
+- Letting you re-auth with `scripts/local/reauth_local.sh` (local) and `scripts/vm/reauth_vm.sh` (VM)
 - Reloading Playwright context from updated storage state
 
 ## Quick start
@@ -24,7 +24,7 @@ It is designed to survive normal session expiration by:
    ```bash
    cp .env.example .env.local
    ```
-   Fill secrets (for example `PUSHOVER_APP_TOKEN`, `PUSHOVER_USER_KEY`) in `.env.local`.
+   Fill `.env.local` (ClassSearch URLs, poll intervals, optional Pushover secrets).
 3. Log in once and save auth state:
    ```bash
    ./venv/bin/python login_save.py
@@ -33,6 +33,20 @@ It is designed to survive normal session expiration by:
    ```bash
    ./venv/bin/python monitor_classsearch.py
    ```
+
+## Re-auth scripts
+
+- Local machine (refresh auth + validate env + preflight all targets):
+  ```bash
+  ./scripts/local/reauth_local.sh
+  ```
+- VM host (validate env + preflight + restart service):
+  ```bash
+  ./scripts/vm/reauth_vm.sh
+  ```
+
+Both require `.env.local` and fail fast if required keys are missing (poll intervals, runtime settings, or all ClassSearch URL slots empty).
+Operational runbooks live in `docs/runbooks/`.
 
 ## How it works (detailed)
 
@@ -117,18 +131,19 @@ Note:
 
 ## Configuration
 
-All runtime settings are centralized in `config.py`.
+Runtime values are read from `.env.local` / `.env` (loaded by `config.py`).
 
 Most important settings:
 
-- `CLASSSEARCH_URL`: page to monitor
-- `CLASSSEARCH_POLL_INTERVAL`: poll cadence in seconds
+- `CLASSSEARCH_URL_1..CLASSSEARCH_URL_10`: ClassSearch pages to monitor
+- `CLASSSEARCH_POLL_INTERVAL`: ClassSearch loop sleep interval in seconds
+- `CLASSPLANNER_POLL_INTERVAL`: ClassPlanner poll interval in seconds
 - `MAX_SNAPSHOTS_TO_KEEP`: normal snapshot retention count
 - `PLAYWRIGHT_TIMEOUT`: navigation timeout
 - `PLAYWRIGHT_HEADLESS`: run headless or headed
 - `PUSHOVER_*`: notification configuration
 
-Many settings can also be overridden via environment variables.
+`CLASSSEARCH_URL` remains as a backwards-compatible alias to the first non-empty configured URL.
 
 ### Secret handling
 
@@ -169,6 +184,16 @@ myucla_tracker/
 ├── login_save.py                  # Interactive auth + storage.json refresh
 ├── extract_snippet.py             # ClassPlanner monitor (separate flow)
 ├── test_push.py                   # Pushover verification script
+├── scripts/
+│   ├── local/                     # Local scripts
+│   │   ├── reauth_local.sh
+│   │   ├── run_monitor.sh
+│   │   └── run_monitor_classsearch.sh
+│   └── vm/                        # VM scripts
+│       └── reauth_vm.sh
+├── docs/runbooks/                 # Operational runbooks
+│   ├── REAUTH_RUNBOOK.md
+│   └── VM_RUNBOOK.md
 ├── snapshots/                     # Saved HTML snapshots
 ├── pw_user_data/                  # Persistent browser profile data
 ├── storage.json                   # Playwright storage state
@@ -190,7 +215,7 @@ You are likely using system Python. Use:
 
 1. Re-auth:
    ```bash
-   ./venv/bin/python login_save.py
+   ./scripts/local/reauth_local.sh
    ```
 2. If running via LaunchAgent, restart:
    ```bash

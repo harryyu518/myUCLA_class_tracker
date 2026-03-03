@@ -39,59 +39,54 @@ Recent logs:
 journalctl -u myucla-monitor -n 120 -l --no-pager
 ```
 
-## 3) Change monitored URL (single-source)
+## 3) Change monitored URLs / poll interval (single-source)
 
-Only edit `config.py`:
-
-```python
-CLASSSEARCH_URL = os.getenv("CLASSSEARCH_URL", "<new class search url>")
-```
-
-Do not edit `targets.json` for URL changes (`targets.json` now references `config.CLASSSEARCH_URL`).
-
-Apply the change on VM:
-
-Mac terminal:
+Edit `.env.local` (local repo):
 
 ```bash
 cd "$LOCAL_REPO"
-git add config.py targets.json
-git commit -m "Update monitored ClassSearch URL"
-git push
+nano .env.local
 ```
 
-VM terminal:
+Set values like:
 
 ```bash
-cd "$REMOTE_REPO"
-git pull
-sudo systemctl restart myucla-monitor
-journalctl -u myucla-monitor -n 80 -l --no-pager
+CLASSSEARCH_URL_1="<class search url 1>"
+CLASSSEARCH_URL_2="<class search url 2>"
+CLASSSEARCH_POLL_INTERVAL=5
+```
+
+Deploy `.env.local` directly to VM (no git required):
+
+```bash
+scp -i "$SSH_KEY" "$LOCAL_REPO/.env.local" "$VM_USER@$VM_IP:$REMOTE_REPO/.env.local"
+ssh -i "$SSH_KEY" "$VM_USER@$VM_IP" "sudo systemctl restart myucla-monitor"
+ssh -i "$SSH_KEY" "$VM_USER@$VM_IP" "sudo journalctl -u myucla-monitor -n 80 -l --no-pager"
 ```
 
 ## 4) Re-auth flow when session expires
 
-### 4.1 Mac terminal: refresh local session
+### 4.1 Mac terminal: run local re-auth script
 
 ```bash
 cd "$LOCAL_REPO"
-launchctl bootout gui/$(id -u)/com.myucla.classsearch.monitor 2>/dev/null || true
-./venv/bin/python login_save.py
+./scripts/local/reauth_local.sh
 ```
 
-Complete Duo in browser, then press Enter in the terminal running `login_save.py`.
+This validates `.env.local`, runs interactive login, updates `storage.json`, and performs local preflight.
 
-### 4.2 Mac terminal: copy new storage.json to VM
+### 4.2 Mac terminal: sync `storage.json` and `.env.local` to VM
 
 ```bash
 scp -i <SSH_KEY_PATH> storage.json ubuntu@<VM_IP>:~/myucla_tracker/storage.json
+scp -i <SSH_KEY_PATH> .env.local ubuntu@<VM_IP>:~/myucla_tracker/.env.local
 ```
 
-### 4.3 VM terminal: restart monitor
+### 4.3 VM terminal: run VM re-auth script
 
 ```bash
-sudo systemctl restart myucla-monitor
-journalctl -u myucla-monitor -n 80 -l --no-pager
+cd "$REMOTE_REPO"
+./scripts/vm/reauth_vm.sh
 ```
 
 ## 5) Sync VM snapshots to local for viewing (Mac terminal)

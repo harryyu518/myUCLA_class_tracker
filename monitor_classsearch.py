@@ -24,7 +24,9 @@ def monitor_classsearch():
     logger.info("Starting ClassSearch monitor...")
     targets = utils.build_classsearch_targets(config.CLASSSEARCH_URLS, config.SNAPSHOTS_DIR)
     if not targets:
-        logger.error("No ClassSearch URLs configured. Set CLASSSEARCH_URL_1..CLASSSEARCH_URL_10 in config.py")
+        logger.error(
+            "No ClassSearch URLs configured. Set CLASSSEARCH_URL_1..CLASSSEARCH_URL_10 in .env.local or .env"
+        )
         return
 
     utils.sync_classsearch_snapshot_dirs(config.SNAPSHOTS_DIR, targets)

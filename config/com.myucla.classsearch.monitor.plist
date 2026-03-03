@@ -6,7 +6,7 @@
     <string>com.myucla.classsearch.monitor</string>
     
     <key>Program</key>
-    <string>/Users/harryyu/Applications/myucla_tracker/run_monitor_classsearch.sh</string>
+    <string>/Users/harryyu/Applications/myucla_tracker/scripts/local/run_monitor_classsearch.sh</string>
     
     <key>RunAtLoad</key>
     <true/>
