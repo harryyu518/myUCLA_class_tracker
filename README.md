@@ -1,240 +1,266 @@
-# UCLA Tracker
+# myUCLA Class Tracker
 
-Automated UCLA page monitoring with Playwright, snapshot diffing, and Pushover alerts.
+Monitor UCLA ClassSearch pages for enrollment/status changes using Playwright, snapshot diffs, and optional Pushover notifications.
 
-## What this project does
+## Project Overview
 
-This project continuously fetches a configured UCLA page, saves timestamped HTML snapshots, compares recent snapshots, and sends a Pushover notification when content changes.
+This project:
+- Uses a real authenticated browser session (UCLA + Duo) saved in `storage.json`
+- Polls one or more ClassSearch URLs on a fixed interval
+- Saves timestamped HTML snapshots per class in `snapshots/<CLASS>/`
+- Detects status changes and sends optional Pushover alerts
+- Detects SSO/session-expired pages and alerts once until session is restored
 
-It is designed to survive normal session expiration by:
+Optional:
+- ClassPlanner monitor (`extract_snippet.py`) with separate polling logic
 
-- Persisting login state in `storage.json`
-- Detecting SSO/login pages
-- Letting you re-auth with `reauth_local.sh` (local) and `reauth_vm.sh` (VM)
-- Reloading Playwright context from updated storage state
+## How It Works
 
-## Quick start
+1. `login_save.py` opens Chromium for interactive UCLA/Duo login.
+2. Session state is saved to `storage.json`.
+3. `monitor_classsearch.py` loads that storage state and fetches all configured `CLASSSEARCH_URL_*` targets.
+4. Each target gets its own snapshot folder (for example `snapshots/EC ENGR 149`).
+5. The monitor compares the latest two snapshots per target and notifies when status changes.
+6. Snapshot retention is enforced by `MAX_SNAPSHOTS_TO_KEEP` (recommended: `5`).
 
-1. Create venv and install dependencies:
+## Requirements
+
+- macOS or Linux
+- Python 3.10+
+- `venv`
+- Chromium via Playwright
+- Optional for VM workflow: `ssh`, `scp`, systemd on the VM
+
+## Setup (Shared)
+
+1. Clone and enter the repo:
+   ```bash
+   git clone <your-repo-url>
+   cd myucla_tracker
+   ```
+2. Create and activate/install venv deps:
    ```bash
    python3 -m venv venv
    ./venv/bin/pip install -r requirements.txt
+   ./venv/bin/python -m playwright install chromium
    ```
-2. Create local runtime config (recommended):
+3. Create local config:
    ```bash
    cp .env.example .env.local
    ```
-   Fill `.env.local` (ClassSearch URLs, poll intervals, optional Pushover secrets).
-3. Log in once and save auth state:
+4. Edit `.env.local`:
+   - Set at least `CLASSSEARCH_URL_1`
+   - Set polling/runtime values (Recommended polling interval > 10s)
+   - Configure Pushover keys (see section below)
+
+## Pushover Notifications Setup (Real-Time Alerts)
+
+This project can send push notifications to your phone whenever status changes are detected.
+
+1. Create a Pushover account:
+   - https://pushover.net/
+2. Install the Pushover app on your phone and log in with that account.
+3. Get your user key:
+   - After login, your **User Key** is shown on the Pushover dashboard.
+   - Use that value for `PUSHOVER_USER_KEY`.
+4. Create an application/API token:
+   - Open: https://pushover.net/apps/build
+   - Create a new application (for example `myucla_tracker`).
+   - Copy the generated **API Token/Key**.
+   - Use that value for `PUSHOVER_APP_TOKEN`.
+5. Put both values in `.env.local`:
+
+```env
+PUSHOVER_APP_TOKEN=your_app_api_token
+PUSHOVER_USER_KEY=your_user_key
+PUSHOVER_API_URL=https://api.pushover.net/1/messages.json
+```
+
+6. (Optional) Test notifications quickly:
    ```bash
-   ./venv/bin/python login_save.py
-   ```
-4. Run monitor:
-   ```bash
-   ./venv/bin/python monitor_classsearch.py
+   ./venv/bin/python test_push.py
    ```
 
-## Re-auth scripts
+## Run Locally (No VM)
 
-- Local machine (refresh auth + validate env + preflight all targets):
-  ```bash
-  ./reauth_local.sh
-  ```
-- `reauth_local.sh` now also ensures local ClassSearch monitoring is running after successful re-auth.
-- VM workflow from local terminal (login + sync + remote preflight/restart):
-  ```bash
-  ./reauth_vm.sh
-  ```
+### Start Local Monitoring
 
-Concurrency guard:
-- `reauth_local.sh` stops the VM monitor service first (when VM connection values are configured).
-- `reauth_vm.sh` stops local monitor processes first, then stops the VM service before re-auth, and restarts it at the end.
-
-Both require `.env.local` and fail fast if required keys are missing (poll intervals, runtime settings, or all ClassSearch URL slots empty).
-Operational runbooks live in `docs/runbooks/`.
-
-## How it works (detailed)
-
-### 1) Playwright authentication model
-
-- `login_save.py` launches a **persistent Chromium context** using `pw_user_data/`.
-- You complete UCLA login + Duo interactively in a real browser window.
-- On Enter, it writes `context.storage_state(...)` to `storage.json`.
-- `storage.json` contains cookies/local storage that later runs can reuse.
-
-Important behavior:
-- `login_save.py` opens `config.CLASSSEARCH_URL`, so auth is captured for the same domain/path family the monitor uses.
-
-### 2) Monitor runtime loop
-
-`monitor_classsearch.py` runs a loop:
-
-1. Start `utils.PlaywrightSession(config.STORAGE_FILE)`
-2. Fetch URL with `page.goto(..., wait_until="networkidle")`
-3. Classify response:
-   - If SSO/login page: treat as expired session
-   - Else: treat as normal monitored content
-4. Save snapshot
-5. Rotate snapshots
-6. Compare last two snapshots
-7. Notify on change
-8. Sleep and repeat
-
-### 3) SSO/session expiration handling
-
-SSO detection uses keyword matching (`utils.is_sso_page`), including terms like:
-
-- `UCLA Single Sign-On`
-- `Sign In with your UCLA Logon ID`
-- `duo_iframe`
-
-When SSO is detected:
-
-- A one-time “session expired” Pushover alert is sent
-- `classsearch_sso_YYYYMMDD_HHMMSS.html` is saved for debugging
-- The Playwright context is closed and recreated from `storage.json` so a fresh `login_save.py` can be picked up without a full process restart
-
-When non-SSO content returns again:
-
-- “session restored” notification is sent once
-- Normal monitoring continues
-
-### 4) Snapshot and diff pipeline
-
-Normal snapshots are saved as:
-
-- `snapshots/classsearch_YYYYMMDD_HHMMSS.html`
-
-The compare/rotation pattern is configured as:
-
-- `CLASSSEARCH_SNAPSHOT_PATTERN = "classsearch_[0-9]*.html"`
-
-This intentionally excludes:
-
-- `classsearch_sso_*.html`
-- `classsearch_saved.html`
-
-So SSO/debug files do not trigger normal change alerts.
-
-Before compare, HTML is normalized by:
-
-- Removing `<script>...</script>`
-- Removing `<style>...</style>`
-- Removing `<!-- comments -->`
-- Collapsing whitespace
-
-Then the two most recent normalized snapshots are compared. If different, a Pushover “changed” alert is sent.
-
-### 5) Snapshot retention
-
-`MAX_SNAPSHOTS_TO_KEEP` controls retention for normal snapshots (default `5`).
-
-Rotation is executed after each normal save, so only the latest N matching files are kept.
-
-Note:
-- SSO snapshots are diagnostic and are not part of normal rotation unless you add separate cleanup for `classsearch_sso_*`.
-
-## Configuration
-
-Runtime values are read from `.env.local` / `.env` (loaded by `config.py`).
-
-Most important settings:
-
-- `CLASSSEARCH_URL_1..CLASSSEARCH_URL_10`: ClassSearch pages to monitor
-- `CLASSSEARCH_POLL_INTERVAL`: ClassSearch loop sleep interval in seconds
-- `CLASSPLANNER_POLL_INTERVAL`: ClassPlanner poll interval in seconds
-- `MAX_SNAPSHOTS_TO_KEEP`: normal snapshot retention count
-- `PLAYWRIGHT_TIMEOUT`: navigation timeout
-- `PLAYWRIGHT_HEADLESS`: run headless or headed
-- `PUSHOVER_*`: notification configuration
-
-`CLASSSEARCH_URL` remains as a backwards-compatible alias to the first non-empty configured URL.
-
-### Secret handling
-
-- Do not store secrets in committed files.
-- Use `.env.local` (gitignored) for local tokens/keys.
-- Keep `storage.json`, `pw_user_data/`, and `snapshots/` out of git.
-
-## Running modes
-
-### Manual
-
-```bash
-./venv/bin/python monitor_classsearch.py
-```
-
-### LaunchAgent (macOS)
-
-Install/load:
-
-```bash
-cp config/com.myucla.classsearch.monitor.plist ~/Library/LaunchAgents/
-launchctl load ~/Library/LaunchAgents/com.myucla.classsearch.monitor.plist
-```
-
-Restart after config/code changes:
-
-```bash
-launchctl kickstart -k gui/$(id -u)/com.myucla.classsearch.monitor
-```
-
-## Project structure
-
-```text
-myucla_tracker/
-├── config.py                      # Central config (URLs, intervals, auth, retention)
-├── utils.py                       # Playwright wrapper, diff/rotation, notifications
-├── monitor_classsearch.py         # Main monitoring loop
-├── login_save.py                  # Interactive auth + storage.json refresh
-├── extract_snippet.py             # ClassPlanner monitor (separate flow)
-├── test_push.py                   # Pushover verification script
-├── reauth_local.sh                # Local re-auth script
-├── reauth_vm.sh                   # VM re-auth orchestrator (run from local or VM)
-├── run_monitor.sh                 # ClassPlanner monitor launcher
-├── run_monitor_classsearch.sh     # ClassSearch monitor launcher
-├── docs/runbooks/                 # Operational runbooks
-│   ├── REAUTH_RUNBOOK.md
-│   └── VM_RUNBOOK.md
-├── snapshots/                     # Saved HTML snapshots
-├── pw_user_data/                  # Persistent browser profile data
-├── storage.json                   # Playwright storage state
-├── config/                        # LaunchAgent plist files
-└── requirements.txt               # Python dependencies
-```
-
-## Troubleshooting
-
-### `ModuleNotFoundError: No module named 'playwright'`
-
-You are likely using system Python. Use:
-
-```bash
-./venv/bin/python login_save.py
-```
-
-### Stuck on SSO snapshots
-
-1. Re-auth:
+1. Re-auth and start monitor:
    ```bash
    ./reauth_local.sh
    ```
-2. If running via LaunchAgent, restart:
-   ```bash
-   launchctl kickstart -k gui/$(id -u)/com.myucla.classsearch.monitor
-   ```
 
-### Push alerts when page “looks the same”
+This script will:
+- validate `.env.local`
+- open browser for UCLA + Duo login
+- save `storage.json`
+- run preflight checks
+- start/restart local monitor
 
-Possible causes:
+### Manual Monitor Commands
 
-- Real HTML changed in non-visual attributes
-- Dynamic framework attributes (e.g. Angular runtime attrs) changed
-- Session/redirect transitions produced structurally different HTML
+- Start monitor manually:
+  ```bash
+  ./run_monitor_classsearch.sh
+  ```
+- Stop monitor manually:
+  ```bash
+  pkill -f "monitor_classsearch.py"
+  ```
 
-Inspect with direct diff between recent snapshots.
+### Optional ClassPlanner Monitor
 
-## Notes
+- Run ClassPlanner monitor:
+  ```bash
+  ./run_monitor.sh
+  ```
 
-- This project does not bypass UCLA auth; it automates a browser session you authenticate manually.
-- Treat `storage.json` and `pw_user_data/` as sensitive session artifacts.
+## Run With a VM (Local Login + Remote Monitor)
+
+Use this when you want the monitor process running on a Linux VPS, but still complete UCLA login from your local machine browser.
+
+### 1) Prepare VM
+
+On VM (Ubuntu example):
+
+```bash
+sudo apt update
+sudo apt install -y python3 python3-venv git
+
+git clone <your-repo-url> ~/myucla_tracker
+cd ~/myucla_tracker
+python3 -m venv venv
+./venv/bin/pip install -r requirements.txt
+./venv/bin/python -m playwright install chromium
+```
+
+### 2) Create systemd service on VM (recommended)
+
+Create `/etc/systemd/system/myucla-monitor.service`:
+
+```ini
+[Unit]
+Description=myUCLA ClassSearch Monitor
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/myucla_tracker
+ExecStart=/home/ubuntu/myucla_tracker/run_monitor_classsearch.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Then:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable myucla-monitor
+```
+
+### 3) Configure local `.env.local` for VM orchestration
+
+Set these keys:
+- `VM_IP`
+- `VM_USER` (usually `ubuntu`)
+- `SSH_KEY` (for example `~/.ssh/id_ed25519`)
+- `REMOTE_REPO` (for example `~/myucla_tracker`)
+
+### 4) Run VM re-auth from local machine
+
+```bash
+./reauth_vm.sh
+```
+
+This script (from local machine) will:
+- stop local monitor to avoid local+VM overlap
+- stop VM monitor service
+- open browser locally for UCLA + Duo
+- save local `storage.json`
+- run local preflight check
+- upload `storage.json` (and optional `.env.local`) to VM
+- run remote preflight and restart VM service
+
+### 5) (Optional, for troubleshooting purposes) Pull VM snapshots to local
+
+```bash
+rsync -az --delete -e "ssh -i ~/.ssh/id_ed25519" \
+  ubuntu@<VM_IP>:/home/ubuntu/myucla_tracker/snapshots/ \
+  /path/to/myucla_tracker/snapshots/
+```
+
+### Stop VM monitor
+
+```bash
+ssh -i ~/.ssh/id_ed25519 ubuntu@<VM_IP> "sudo systemctl stop myucla-monitor"
+```
+
+## VPS Hosting Recommendations
+
+If you want a cheap or free VM, these are common options:
+
+- Oracle Cloud Free Tier (includes Always Free resources; this is what many users choose for zero-cost hobby use):
+  - https://docs.oracle.com/iaas/Content/FreeTier/freetier.htm
+  - https://www.oracle.com/cloud/free/
+- Hetzner Cloud (strong price/performance in many regions):
+  - https://www.hetzner.com/cloud
+- DigitalOcean Droplets (very straightforward UX/docs):
+  - https://www.digitalocean.com/pricing/droplets
+
+Choose a region with low latency to you and reliable instance availability.
+
+## Common Issues and Troubleshooting
+
+### 1) `No valid ClassSearch URLs` or env validation failures
+
+- Make sure at least one `CLASSSEARCH_URL_#` is non-empty in `.env.local`.
+- Confirm required keys in `.env.example` are present in `.env.local`.
+
+### 2) `Missing required file: ~/.ssh/id_ed25519`
+
+- Your SSH key path is wrong or missing.
+- Fix `SSH_KEY` in `.env.local` or create/generate the key.
+
+### 3) `systemctl/journalctl not found`
+
+- Those commands are Linux VM-only.
+- `./reauth_vm.sh` should be run locally for orchestration, but remote service management requires systemd on the VM.
+
+### 4) Too many notifications
+
+- Ensure only one monitor is running at a time (local or VM).
+- Use `./reauth_local.sh` / `./reauth_vm.sh` to switch modes cleanly.
+
+### 5) Browser login succeeds but monitor still sees SSO
+
+- Re-run:
+  ```bash
+  ./reauth_local.sh
+  ```
+- Verify `storage.json` was updated.
+- Check latest logs in `monitor_classsearch.err` and monitor output.
+
+## Security and Privacy Notes
+
+- Do not commit `.env.local`, `storage.json`, `pw_user_data/`, or snapshots.
+- Treat `storage.json` as sensitive session material.
+- If publishing this repo, avoid committing personal IPs/hostnames and private paths.
+
+## Contributing
+
+PRs and issues are welcome.
+
+See [CONTRIBUTING.md](/Users/harryyu/Projects/myucla_tracker/CONTRIBUTING.md) for setup, workflow, and PR guidelines.
+
+## Credits
+
+- Built and maintained by the project author and contributors.
+- Powered by Playwright, BeautifulSoup, and Pushover APIs.
+
+## License
+
+This project is licensed under the MIT License. See [LICENSE](/Users/harryyu/Projects/myucla_tracker/LICENSE).
