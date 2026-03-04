@@ -45,13 +45,6 @@ It is designed to survive normal session expiration by:
   ```bash
   ./reauth_vm.sh
   ```
-- `reauth_vm.sh` starts/restarts `sync_vm_snapshots.sh` so VM snapshots auto-sync locally every `CLASSSEARCH_POLL_INTERVAL` seconds (default destination: `snapshots/vm`).
-- Control VM snapshot autosync manually:
-  ```bash
-  ./sync_vm_snapshots.sh status
-  ./sync_vm_snapshots.sh stop
-  ./sync_vm_snapshots.sh start
-  ```
 
 Concurrency guard:
 - `reauth_local.sh` stops the VM monitor service first (when VM connection values are configured).
@@ -198,7 +191,6 @@ myucla_tracker/
 ├── test_push.py                   # Pushover verification script
 ├── reauth_local.sh                # Local re-auth script
 ├── reauth_vm.sh                   # VM re-auth orchestrator (run from local or VM)
-├── sync_vm_snapshots.sh           # Background VM snapshot autosync worker
 ├── run_monitor.sh                 # ClassPlanner monitor launcher
 ├── run_monitor_classsearch.sh     # ClassSearch monitor launcher
 ├── docs/runbooks/                 # Operational runbooks

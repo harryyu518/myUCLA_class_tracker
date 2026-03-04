@@ -14,11 +14,8 @@ SYNC_ENV_LOCAL="${SYNC_ENV_LOCAL:-1}"
 REMOTE_HELPER_SCRIPT="${REMOTE_HELPER_SCRIPT:-/tmp/myucla_reauth_vm.sh}"
 STOP_LOCAL_MONITOR="${STOP_LOCAL_MONITOR:-1}"
 LOCAL_SERVICE_LABEL="${LOCAL_SERVICE_LABEL:-com.myucla.classsearch.monitor}"
-SYNC_VM_SNAPSHOTS_IS_SET="${SYNC_VM_SNAPSHOTS+x}"
-LOCAL_SNAPSHOTS_DIR_IS_SET="${LOCAL_SNAPSHOTS_DIR+x}"
-SYNC_VM_SNAPSHOTS="${SYNC_VM_SNAPSHOTS:-1}"
-LOCAL_SNAPSHOTS_DIR="${LOCAL_SNAPSHOTS_DIR:-$VM_REPO/snapshots/vm}"
-SYNC_WORKER_SCRIPT="${SYNC_WORKER_SCRIPT:-$VM_REPO/sync_vm_snapshots.sh}"
+SNAPSHOT_SOURCE_MODE="${SNAPSHOT_SOURCE_MODE:-vm}"
+SNAPSHOT_SOURCE_FILE="${SNAPSHOT_SOURCE_FILE:-$VM_REPO/snapshots/.active_source}"
 
 log() {
   printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"
@@ -96,6 +93,45 @@ read_env_key() {
       exit
     }
   ' "$env_file"
+}
+
+prepare_snapshots_for_mode() {
+  local mode="$1"
+  local source_file="$2"
+  local snapshot_root
+  local previous_mode=""
+
+  snapshot_root="$(dirname "$source_file")"
+  mkdir -p "$snapshot_root"
+
+  if [[ -f "$source_file" ]]; then
+    previous_mode="$(tr -d '[:space:]' <"$source_file")"
+  fi
+
+  if [[ -n "$previous_mode" ]] && [[ "$previous_mode" != "$mode" ]]; then
+    log "Snapshot source changed (${previous_mode} -> ${mode}); clearing ClassSearch snapshots"
+    find "$snapshot_root" -maxdepth 1 -type f \
+      \( -name "classsearch_[0-9]*.html" -o -name "classsearch_sso_*.html" \) -delete || true
+    find "$snapshot_root" -mindepth 2 -maxdepth 2 -type f \
+      \( -name "classsearch_[0-9]*.html" -o -name "classsearch_sso_*.html" \) -delete || true
+  fi
+
+  printf '%s\n' "$mode" >"$source_file"
+
+  ./venv/bin/python -u - <<'PY'
+import config
+import utils
+
+targets = utils.build_classsearch_targets(config.CLASSSEARCH_URLS, config.SNAPSHOTS_DIR)
+for target in targets:
+    utils.rotate_snapshots_by_patterns(
+        target["snapshot_dir"],
+        [config.CLASSSEARCH_SNAPSHOT_PATTERN, config.CLASSSEARCH_SSO_SNAPSHOT_PATTERN],
+        config.MAX_SNAPSHOTS_TO_KEEP,
+    )
+
+print(f"Snapshot retention enforced: keep={config.MAX_SNAPSHOTS_TO_KEEP} per class")
+PY
 }
 
 validate_env_file() {
@@ -203,18 +239,6 @@ if [[ -f "$VM_REPO/.env.local" ]]; then
   if [[ -z "$REMOTE_REPO" ]]; then
     REMOTE_REPO="$(read_env_key "$VM_REPO/.env.local" "REMOTE_REPO")"
   fi
-  if [[ -z "$SYNC_VM_SNAPSHOTS_IS_SET" ]]; then
-    env_sync_vm_snapshots="$(read_env_key "$VM_REPO/.env.local" "SYNC_VM_SNAPSHOTS")"
-    if [[ -n "$env_sync_vm_snapshots" ]]; then
-      SYNC_VM_SNAPSHOTS="$env_sync_vm_snapshots"
-    fi
-  fi
-  if [[ -z "$LOCAL_SNAPSHOTS_DIR_IS_SET" ]]; then
-    env_local_snapshots_dir="$(read_env_key "$VM_REPO/.env.local" "LOCAL_SNAPSHOTS_DIR")"
-    if [[ -n "$env_local_snapshots_dir" ]]; then
-      LOCAL_SNAPSHOTS_DIR="$(expand_home_path "$env_local_snapshots_dir")"
-    fi
-  fi
 fi
 
 VM_USER="${VM_USER:-ubuntu}"
@@ -233,6 +257,7 @@ if has_cmd systemctl && has_cmd journalctl; then
 
   log "Validating .env.local required keys and runtime settings"
   validate_env_file "$VM_REPO/.env.local"
+  prepare_snapshots_for_mode "$SNAPSHOT_SOURCE_MODE" "$SNAPSHOT_SOURCE_FILE"
 
   log "Running VM preflight is_sso check for all configured ClassSearch URLs"
   run_preflight_check
@@ -277,6 +302,7 @@ fi
 
 log "Validating .env.local required keys and runtime settings"
 validate_env_file "$VM_REPO/.env.local"
+prepare_snapshots_for_mode "$SNAPSHOT_SOURCE_MODE" "$SNAPSHOT_SOURCE_FILE"
 
 log "Starting interactive local re-auth (complete UCLA + Duo, then press Enter)"
 LOGIN_SAVE_SCRIPT="$VM_REPO/login_save.py"
@@ -310,20 +336,5 @@ scp "${SSH_OPTS[@]}" "$VM_REPO/reauth_vm.sh" "${SSH_TARGET}:${REMOTE_HELPER_SCRI
 log "Running VM re-auth script remotely (preflight + restart + logs)"
 ssh "${SSH_OPTS[@]}" "$SSH_TARGET" \
   "cd $REMOTE_REPO && RESTART_SERVICE=1 SERVICE_NAME='$SERVICE_NAME' VM_REPO=\"\$(pwd)\" bash '$REMOTE_HELPER_SCRIPT'"
-
-if [[ "$SYNC_VM_SNAPSHOTS" == "1" ]]; then
-  require_file "$SYNC_WORKER_SCRIPT"
-  if [[ ! -x "$SYNC_WORKER_SCRIPT" ]]; then
-    chmod +x "$SYNC_WORKER_SCRIPT"
-  fi
-  log "Starting VM snapshot autosync worker (every CLASSSEARCH_POLL_INTERVAL seconds)"
-  VM_REPO="$VM_REPO" \
-  VM_USER="$VM_USER" \
-  VM_IP="$VM_IP" \
-  SSH_KEY="$SSH_KEY" \
-  REMOTE_REPO="$REMOTE_REPO" \
-  LOCAL_SNAPSHOTS_DIR="$LOCAL_SNAPSHOTS_DIR" \
-  "$SYNC_WORKER_SCRIPT" restart
-fi
 
 log "Done"

@@ -14,6 +14,8 @@ STOP_REMOTE_VM_MONITOR="${STOP_REMOTE_VM_MONITOR:-1}"
 VM_USER="${VM_USER:-}"
 VM_IP="${VM_IP:-}"
 SSH_KEY="${SSH_KEY:-}"
+SNAPSHOT_SOURCE_MODE="${SNAPSHOT_SOURCE_MODE:-local}"
+SNAPSHOT_SOURCE_FILE="${SNAPSHOT_SOURCE_FILE:-$LOCAL_REPO/snapshots/.active_source}"
 
 log() {
   printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"
@@ -73,6 +75,45 @@ read_env_key() {
       exit
     }
   ' "$env_file"
+}
+
+prepare_snapshots_for_mode() {
+  local mode="$1"
+  local source_file="$2"
+  local snapshot_root
+  local previous_mode=""
+
+  snapshot_root="$(dirname "$source_file")"
+  mkdir -p "$snapshot_root"
+
+  if [[ -f "$source_file" ]]; then
+    previous_mode="$(tr -d '[:space:]' <"$source_file")"
+  fi
+
+  if [[ -n "$previous_mode" ]] && [[ "$previous_mode" != "$mode" ]]; then
+    log "Snapshot source changed (${previous_mode} -> ${mode}); clearing ClassSearch snapshots"
+    find "$snapshot_root" -maxdepth 1 -type f \
+      \( -name "classsearch_[0-9]*.html" -o -name "classsearch_sso_*.html" \) -delete || true
+    find "$snapshot_root" -mindepth 2 -maxdepth 2 -type f \
+      \( -name "classsearch_[0-9]*.html" -o -name "classsearch_sso_*.html" \) -delete || true
+  fi
+
+  printf '%s\n' "$mode" >"$source_file"
+
+  ./venv/bin/python -u - <<'PY'
+import config
+import utils
+
+targets = utils.build_classsearch_targets(config.CLASSSEARCH_URLS, config.SNAPSHOTS_DIR)
+for target in targets:
+    utils.rotate_snapshots_by_patterns(
+        target["snapshot_dir"],
+        [config.CLASSSEARCH_SNAPSHOT_PATTERN, config.CLASSSEARCH_SSO_SNAPSHOT_PATTERN],
+        config.MAX_SNAPSHOTS_TO_KEEP,
+    )
+
+print(f"Snapshot retention enforced: keep={config.MAX_SNAPSHOTS_TO_KEEP} per class")
+PY
 }
 
 launch_agent_target() {
@@ -202,6 +243,7 @@ fi
 
 log "Validating .env.local required keys and runtime settings"
 validate_env_file "$LOCAL_REPO/.env.local"
+prepare_snapshots_for_mode "$SNAPSHOT_SOURCE_MODE" "$SNAPSHOT_SOURCE_FILE"
 
 if [[ "$STOP_LOCAL_MONITOR" == "1" ]] && command -v launchctl >/dev/null 2>&1; then
   log "Stopping local LaunchAgent monitor before re-auth"
