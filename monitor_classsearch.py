@@ -10,6 +10,7 @@ Monitor UCLA ClassSearch page for enrollment changes.
 """
 
 import time
+import signal
 from datetime import datetime
 from pathlib import Path
 
@@ -19,8 +20,37 @@ import utils
 logger = utils.setup_logger(__name__)
 
 
+shutdown_requested = False
+
+
+def _handle_shutdown_signal(signum, _frame):
+    """Mark shutdown requested so the main loop can exit cleanly."""
+    global shutdown_requested
+    if shutdown_requested:
+        return
+    shutdown_requested = True
+    logger.info(f"Received signal {signum}; preparing graceful shutdown")
+
+
+def _sleep_with_shutdown(total_seconds: float, step_seconds: float = 0.2) -> bool:
+    """Sleep in small chunks so shutdown signals are respected quickly."""
+    remaining = max(0.0, total_seconds)
+    while remaining > 0:
+        if shutdown_requested:
+            return False
+        chunk = min(step_seconds, remaining)
+        time.sleep(chunk)
+        remaining -= chunk
+    return True
+
+
 def monitor_classsearch():
     """Main monitoring loop for ClassSearch page."""
+    global shutdown_requested
+    shutdown_requested = False
+    signal.signal(signal.SIGTERM, _handle_shutdown_signal)
+    signal.signal(signal.SIGINT, _handle_shutdown_signal)
+
     logger.info("Starting ClassSearch monitor...")
     targets = utils.build_classsearch_targets(config.CLASSSEARCH_URLS, config.SNAPSHOTS_DIR)
     if not targets:
@@ -54,12 +84,14 @@ def monitor_classsearch():
         return
 
     try:
-        while True:
+        while not shutdown_requested:
             loop_started = time.monotonic()
             logger.info(f"[Fetch {iteration}] Fetching {len(targets)} ClassSearch target(s)...")
             try:
                 saw_sso = False
                 for target in targets:
+                    if shutdown_requested:
+                        break
                     snapshot_dir = Path(target["snapshot_dir"])
                     target_name = snapshot_dir.name
                     last_target_name = target_name
@@ -142,7 +174,8 @@ def monitor_classsearch():
                     session.start()
                     logger.info("Reloaded Playwright session from storage state")
                     logger.info(f"Waiting {config.CLASSSEARCH_POLL_INTERVAL}s before retrying...")
-                    time.sleep(config.CLASSSEARCH_POLL_INTERVAL)
+                    if not _sleep_with_shutdown(config.CLASSSEARCH_POLL_INTERVAL):
+                        break
                     iteration += 1
                     continue
 
@@ -166,7 +199,8 @@ def monitor_classsearch():
                 logger.info(
                     f"Loop finished in {loop_elapsed:.2f}s; sleeping {sleep_seconds:.2f}s until next fetch..."
                 )
-                time.sleep(sleep_seconds)
+                if not _sleep_with_shutdown(sleep_seconds):
+                    break
             else:
                 logger.info(
                     f"Loop took {loop_elapsed:.2f}s (>= {config.CLASSSEARCH_POLL_INTERVAL}s); starting next fetch immediately"
@@ -174,8 +208,11 @@ def monitor_classsearch():
             iteration += 1
 
     except KeyboardInterrupt:
+        shutdown_requested = True
         logger.info("Monitor interrupted by user")
     finally:
+        if shutdown_requested:
+            logger.info("Shutting down monitor gracefully")
         if session:
             try:
                 session.close()
