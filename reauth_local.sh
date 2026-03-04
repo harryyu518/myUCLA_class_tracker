@@ -7,6 +7,13 @@ LOCAL_REPO="${LOCAL_REPO:-$REPO_ROOT}"
 LOCAL_SERVICE_LABEL="${LOCAL_SERVICE_LABEL:-com.myucla.classsearch.monitor}"
 STOP_LOCAL_MONITOR="${STOP_LOCAL_MONITOR:-0}"
 RESTART_LOCAL_MONITOR="${RESTART_LOCAL_MONITOR:-1}"
+AUTO_START_LOCAL_MONITOR="${AUTO_START_LOCAL_MONITOR:-1}"
+LOCAL_MONITOR_LOG="${LOCAL_MONITOR_LOG:-$LOCAL_REPO/monitor_classsearch.local.log}"
+SERVICE_NAME="${SERVICE_NAME:-myucla-monitor}"
+STOP_REMOTE_VM_MONITOR="${STOP_REMOTE_VM_MONITOR:-1}"
+VM_USER="${VM_USER:-}"
+VM_IP="${VM_IP:-}"
+SSH_KEY="${SSH_KEY:-}"
 
 log() {
   printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"
@@ -25,6 +32,90 @@ require_file() {
 require_cmd() {
   local cmd_name="$1"
   command -v "$cmd_name" >/dev/null 2>&1 || die "Missing required command: $cmd_name"
+}
+
+has_cmd() {
+  local cmd_name="$1"
+  command -v "$cmd_name" >/dev/null 2>&1
+}
+
+expand_home_path() {
+  local raw_path="$1"
+  if [[ "$raw_path" == "~" ]]; then
+    printf '%s\n' "$HOME"
+    return
+  fi
+  if [[ "$raw_path" == "~/"* ]]; then
+    printf '%s/%s\n' "$HOME" "${raw_path#\~/}"
+    return
+  fi
+  printf '%s\n' "$raw_path"
+}
+
+read_env_key() {
+  local env_file="$1"
+  local key_name="$2"
+  awk -F= -v lookup_key="$key_name" '
+    /^[[:space:]]*#/ { next }
+    NF < 2 { next }
+    {
+      key = $1
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", key)
+      if (key != lookup_key) {
+        next
+      }
+      value = substr($0, index($0, "=") + 1)
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+      if (value ~ /^".*"$/ || value ~ /^'\''.*'\''$/) {
+        value = substr(value, 2, length(value) - 2)
+      }
+      print value
+      exit
+    }
+  ' "$env_file"
+}
+
+launch_agent_target() {
+  printf 'gui/%s/%s' "$(id -u)" "$LOCAL_SERVICE_LABEL"
+}
+
+is_launch_agent_loaded() {
+  launchctl print "$(launch_agent_target)" >/dev/null 2>&1
+}
+
+ensure_local_monitor_running() {
+  local started=0
+
+  if has_cmd launchctl; then
+    local target
+    target="$(launch_agent_target)"
+    if is_launch_agent_loaded; then
+      log "Restarting local LaunchAgent monitor"
+      launchctl kickstart -k "$target" || true
+      started=1
+    else
+      local plist="$HOME/Library/LaunchAgents/$LOCAL_SERVICE_LABEL.plist"
+      if [[ -f "$plist" ]]; then
+        log "Loading local LaunchAgent from $plist"
+        launchctl bootstrap "gui/$(id -u)" "$plist" >/dev/null 2>&1 || true
+        launchctl kickstart -k "$target" >/dev/null 2>&1 || true
+        if is_launch_agent_loaded; then
+          log "Started local LaunchAgent monitor: $LOCAL_SERVICE_LABEL"
+          started=1
+        fi
+      fi
+    fi
+  fi
+
+  if [[ "$started" == "0" ]]; then
+    if has_cmd pgrep && pgrep -f "monitor_classsearch.py" >/dev/null 2>&1; then
+      log "Local monitor process already running; skipping direct start"
+      return
+    fi
+    log "Starting local monitor directly (no active LaunchAgent)"
+    nohup "$LOCAL_REPO/run_monitor_classsearch.sh" >>"$LOCAL_MONITOR_LOG" 2>&1 &
+    log "Local monitor started (pid=$!, log=$LOCAL_MONITOR_LOG)"
+  fi
 }
 
 validate_env_file() {
@@ -85,12 +176,39 @@ require_file "$LOCAL_REPO/login_save.py"
 
 cd "$LOCAL_REPO"
 
+# Load optional VM connection settings from .env.local.
+if [[ -f "$LOCAL_REPO/.env.local" ]]; then
+  if [[ -z "$VM_IP" ]]; then
+    VM_IP="$(read_env_key "$LOCAL_REPO/.env.local" "VM_IP")"
+  fi
+  if [[ -z "$VM_USER" ]]; then
+    VM_USER="$(read_env_key "$LOCAL_REPO/.env.local" "VM_USER")"
+  fi
+  if [[ -z "$SSH_KEY" ]]; then
+    SSH_KEY="$(read_env_key "$LOCAL_REPO/.env.local" "SSH_KEY")"
+  fi
+fi
+
+VM_USER="${VM_USER:-ubuntu}"
+SSH_KEY="${SSH_KEY:-$HOME/.ssh/id_ed25519}"
+SSH_KEY="$(expand_home_path "$SSH_KEY")"
+
+if [[ "$STOP_REMOTE_VM_MONITOR" == "1" ]] && [[ -n "$VM_IP" ]]; then
+  require_cmd ssh
+  require_file "$SSH_KEY"
+  log "Stopping VM service before local re-auth to avoid local+VM overlap"
+  ssh -i "$SSH_KEY" "$VM_USER@$VM_IP" "sudo systemctl stop '$SERVICE_NAME'"
+fi
+
 log "Validating .env.local required keys and runtime settings"
 validate_env_file "$LOCAL_REPO/.env.local"
 
 if [[ "$STOP_LOCAL_MONITOR" == "1" ]] && command -v launchctl >/dev/null 2>&1; then
   log "Stopping local LaunchAgent monitor before re-auth"
   launchctl bootout "gui/$(id -u)/$LOCAL_SERVICE_LABEL" 2>/dev/null || true
+fi
+if [[ "$STOP_LOCAL_MONITOR" == "1" ]] && has_cmd pkill; then
+  pkill -f "monitor_classsearch.py" >/dev/null 2>&1 || true
 fi
 
 log "Starting interactive local re-auth (complete UCLA + Duo, then press Enter)"
@@ -133,9 +251,8 @@ if bad:
 print("Preflight passed: all targets returned non-SSO pages")
 PY
 
-if [[ "$RESTART_LOCAL_MONITOR" == "1" ]] && command -v launchctl >/dev/null 2>&1; then
-  log "Restarting local LaunchAgent monitor"
-  launchctl kickstart -k "gui/$(id -u)/$LOCAL_SERVICE_LABEL" || true
+if [[ "$RESTART_LOCAL_MONITOR" == "1" ]] || [[ "$AUTO_START_LOCAL_MONITOR" == "1" ]]; then
+  ensure_local_monitor_running
 fi
 
 log "Done"

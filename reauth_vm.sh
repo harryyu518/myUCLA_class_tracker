@@ -6,11 +6,19 @@ REPO_ROOT="$SCRIPT_DIR"
 VM_REPO="${VM_REPO:-$REPO_ROOT}"
 SERVICE_NAME="${SERVICE_NAME:-myucla-monitor}"
 RESTART_SERVICE="${RESTART_SERVICE:-1}"
-VM_USER="${VM_USER:-ubuntu}"
-VM_IP="${VM_IP:-64.181.255.201}"
-SSH_KEY="${SSH_KEY:-$HOME/.ssh/id_ed25519}"
-REMOTE_REPO="${REMOTE_REPO:-~/myucla_tracker}"
+VM_USER="${VM_USER:-}"
+VM_IP="${VM_IP:-}"
+SSH_KEY="${SSH_KEY:-}"
+REMOTE_REPO="${REMOTE_REPO:-}"
 SYNC_ENV_LOCAL="${SYNC_ENV_LOCAL:-1}"
+REMOTE_HELPER_SCRIPT="${REMOTE_HELPER_SCRIPT:-/tmp/myucla_reauth_vm.sh}"
+STOP_LOCAL_MONITOR="${STOP_LOCAL_MONITOR:-1}"
+LOCAL_SERVICE_LABEL="${LOCAL_SERVICE_LABEL:-com.myucla.classsearch.monitor}"
+SYNC_VM_SNAPSHOTS_IS_SET="${SYNC_VM_SNAPSHOTS+x}"
+LOCAL_SNAPSHOTS_DIR_IS_SET="${LOCAL_SNAPSHOTS_DIR+x}"
+SYNC_VM_SNAPSHOTS="${SYNC_VM_SNAPSHOTS:-1}"
+LOCAL_SNAPSHOTS_DIR="${LOCAL_SNAPSHOTS_DIR:-$VM_REPO/snapshots/vm}"
+SYNC_WORKER_SCRIPT="${SYNC_WORKER_SCRIPT:-$VM_REPO/sync_vm_snapshots.sh}"
 
 log() {
   printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"
@@ -36,38 +44,58 @@ has_cmd() {
   command -v "$cmd_name" >/dev/null 2>&1
 }
 
-run_preflight_check() {
-  ./venv/bin/python -u - <<'PY'
-import config
-import utils
+stop_local_monitor_processes() {
+  if has_cmd launchctl; then
+    local target="gui/$(id -u)/$LOCAL_SERVICE_LABEL"
+    if launchctl print "$target" >/dev/null 2>&1; then
+      launchctl bootout "$target" >/dev/null 2>&1 || true
+      log "Stopped local LaunchAgent: $LOCAL_SERVICE_LABEL"
+    else
+      log "Local LaunchAgent not loaded: $LOCAL_SERVICE_LABEL"
+    fi
+  fi
 
-targets = utils.build_classsearch_targets(config.CLASSSEARCH_URLS, config.SNAPSHOTS_DIR)
-if not targets:
-    print("No ClassSearch URLs configured in .env.local or .env")
-    raise SystemExit(2)
+  if has_cmd pkill; then
+    pkill -f "monitor_classsearch.py" >/dev/null 2>&1 || true
+    pkill -f "run_monitor_classsearch.sh" >/dev/null 2>&1 || true
+    log "Stopped local ClassSearch monitor process(es) if running"
+  fi
+}
 
-session = utils.PlaywrightSession(config.STORAGE_FILE)
-bad = []
-try:
-    session.start()
-    for target in targets:
-        name = str(target["name"])
-        url = str(target["url"])
-        html = session.fetch(url)
-        is_sso = utils.is_sso_page(html)
-        status_rows = len(utils.extract_classsearch_status_map(html))
-        print(f"{name}: is_sso={is_sso} status_rows={status_rows}")
-        if is_sso:
-            bad.append(name)
-finally:
-    session.close()
+expand_home_path() {
+  local raw_path="$1"
+  if [[ "$raw_path" == "~" ]]; then
+    printf '%s\n' "$HOME"
+    return
+  fi
+  if [[ "$raw_path" == "~/"* ]]; then
+    printf '%s/%s\n' "$HOME" "${raw_path#\~/}"
+    return
+  fi
+  printf '%s\n' "$raw_path"
+}
 
-if bad:
-    print("Preflight failed: SSO still detected for:", ", ".join(bad))
-    raise SystemExit(3)
-
-print("Preflight passed: all targets returned non-SSO pages")
-PY
+read_env_key() {
+  local env_file="$1"
+  local key_name="$2"
+  awk -F= -v lookup_key="$key_name" '
+    /^[[:space:]]*#/ { next }
+    NF < 2 { next }
+    {
+      key = $1
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", key)
+      if (key != lookup_key) {
+        next
+      }
+      value = substr($0, index($0, "=") + 1)
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+      if (value ~ /^".*"$/ || value ~ /^'\''.*'\''$/) {
+        value = substr(value, 2, length(value) - 2)
+      }
+      print value
+      exit
+    }
+  ' "$env_file"
 }
 
 validate_env_file() {
@@ -121,14 +149,87 @@ print(
 PY
 }
 
+run_preflight_check() {
+  ./venv/bin/python -u - <<'PY'
+import config
+import utils
+
+targets = utils.build_classsearch_targets(config.CLASSSEARCH_URLS, config.SNAPSHOTS_DIR)
+if not targets:
+    print("No ClassSearch URLs configured in .env.local or .env")
+    raise SystemExit(2)
+
+session = utils.PlaywrightSession(config.STORAGE_FILE)
+bad = []
+try:
+    session.start()
+    for target in targets:
+        name = str(target["name"])
+        url = str(target["url"])
+        html = session.fetch(url)
+        is_sso = utils.is_sso_page(html)
+        status_rows = len(utils.extract_classsearch_status_map(html))
+        print(f"{name}: is_sso={is_sso} status_rows={status_rows}")
+        if is_sso:
+            bad.append(name)
+finally:
+    session.close()
+
+if bad:
+    print("Preflight failed: SSO still detected for:", ", ".join(bad))
+    raise SystemExit(3)
+
+print("Preflight passed: all targets returned non-SSO pages")
+PY
+}
+
 require_file "$VM_REPO/venv/bin/python"
 require_file "$VM_REPO/.env.local"
 
 cd "$VM_REPO"
 
+# Convenience: allow VM connection settings from .env.local so ./reauth_vm.sh
+# works without inline env vars on local machines.
+if [[ -f "$VM_REPO/.env.local" ]]; then
+  if [[ -z "$VM_IP" ]]; then
+    VM_IP="$(read_env_key "$VM_REPO/.env.local" "VM_IP")"
+  fi
+  if [[ -z "$VM_USER" ]]; then
+    VM_USER="$(read_env_key "$VM_REPO/.env.local" "VM_USER")"
+  fi
+  if [[ -z "$SSH_KEY" ]]; then
+    SSH_KEY="$(read_env_key "$VM_REPO/.env.local" "SSH_KEY")"
+  fi
+  if [[ -z "$REMOTE_REPO" ]]; then
+    REMOTE_REPO="$(read_env_key "$VM_REPO/.env.local" "REMOTE_REPO")"
+  fi
+  if [[ -z "$SYNC_VM_SNAPSHOTS_IS_SET" ]]; then
+    env_sync_vm_snapshots="$(read_env_key "$VM_REPO/.env.local" "SYNC_VM_SNAPSHOTS")"
+    if [[ -n "$env_sync_vm_snapshots" ]]; then
+      SYNC_VM_SNAPSHOTS="$env_sync_vm_snapshots"
+    fi
+  fi
+  if [[ -z "$LOCAL_SNAPSHOTS_DIR_IS_SET" ]]; then
+    env_local_snapshots_dir="$(read_env_key "$VM_REPO/.env.local" "LOCAL_SNAPSHOTS_DIR")"
+    if [[ -n "$env_local_snapshots_dir" ]]; then
+      LOCAL_SNAPSHOTS_DIR="$(expand_home_path "$env_local_snapshots_dir")"
+    fi
+  fi
+fi
+
+VM_USER="${VM_USER:-ubuntu}"
+SSH_KEY="${SSH_KEY:-$HOME/.ssh/id_ed25519}"
+REMOTE_REPO="${REMOTE_REPO:-~/myucla_tracker}"
+SSH_KEY="$(expand_home_path "$SSH_KEY")"
+
 if has_cmd systemctl && has_cmd journalctl; then
   require_cmd sudo
   require_file "$VM_REPO/storage.json"
+
+  if [[ "$RESTART_SERVICE" == "1" ]]; then
+    log "Stopping VM service before preflight to avoid local+VM overlap"
+    sudo systemctl stop "$SERVICE_NAME"
+  fi
 
   log "Validating .env.local required keys and runtime settings"
   validate_env_file "$VM_REPO/.env.local"
@@ -142,6 +243,7 @@ if has_cmd systemctl && has_cmd journalctl; then
   fi
 
   sleep 3
+
   log "Recent service logs (last 2 minutes)"
   sudo journalctl -u "$SERVICE_NAME" --since "2 minutes ago" -l --no-pager
 
@@ -157,15 +259,29 @@ require_cmd scp
 require_cmd shasum
 require_file "$VM_REPO/login_save.py"
 
+[[ -n "$VM_IP" ]] || die "VM_IP is required when running from local (example: VM_IP=203.0.113.10 ./reauth_vm.sh)"
+
 if [[ -n "$SSH_KEY" ]]; then
   require_file "$SSH_KEY"
+fi
+
+if [[ "$STOP_LOCAL_MONITOR" == "1" ]]; then
+  log "Stopping local monitor before VM re-auth to avoid local+VM overlap"
+  stop_local_monitor_processes
+fi
+
+if [[ "$RESTART_SERVICE" == "1" ]]; then
+  log "Stopping VM service before local re-auth to avoid local+VM overlap"
+  ssh -i "$SSH_KEY" "$VM_USER@$VM_IP" "sudo systemctl stop '$SERVICE_NAME'"
 fi
 
 log "Validating .env.local required keys and runtime settings"
 validate_env_file "$VM_REPO/.env.local"
 
 log "Starting interactive local re-auth (complete UCLA + Duo, then press Enter)"
-./venv/bin/python login_save.py
+LOGIN_SAVE_SCRIPT="$VM_REPO/login_save.py"
+require_file "$LOGIN_SAVE_SCRIPT"
+./venv/bin/python "$LOGIN_SAVE_SCRIPT"
 
 require_file "$VM_REPO/storage.json"
 STORAGE_SHA="$(shasum -a 256 "$VM_REPO/storage.json" | awk '{print $1}')"
@@ -188,19 +304,26 @@ if [[ "$SYNC_ENV_LOCAL" == "1" ]]; then
   scp "${SSH_OPTS[@]}" "$VM_REPO/.env.local" "${SSH_TARGET}:${REMOTE_REPO}/.env.local"
 fi
 
-log "Uploading reauth_vm.sh to ${SSH_TARGET}:${REMOTE_REPO}/reauth_vm.sh"
-scp "${SSH_OPTS[@]}" "$VM_REPO/reauth_vm.sh" "${SSH_TARGET}:${REMOTE_REPO}/reauth_vm.sh"
+log "Uploading reauth_vm.sh helper to ${SSH_TARGET}:${REMOTE_HELPER_SCRIPT}"
+scp "${SSH_OPTS[@]}" "$VM_REPO/reauth_vm.sh" "${SSH_TARGET}:${REMOTE_HELPER_SCRIPT}"
 
 log "Running VM re-auth script remotely (preflight + restart + logs)"
 ssh "${SSH_OPTS[@]}" "$SSH_TARGET" \
-  "cd $REMOTE_REPO && \
-   if [[ -f ./reauth_vm.sh ]]; then \
-     RESTART_SERVICE=1 SERVICE_NAME='$SERVICE_NAME' bash ./reauth_vm.sh; \
-   elif [[ -f ./scripts/vm/reauth_vm.sh ]]; then \
-     RESTART_SERVICE=1 SERVICE_NAME='$SERVICE_NAME' bash ./scripts/vm/reauth_vm.sh; \
-   else \
-     echo 'ERROR: Could not find reauth_vm.sh on VM' >&2; \
-     exit 1; \
-   fi"
+  "cd $REMOTE_REPO && RESTART_SERVICE=1 SERVICE_NAME='$SERVICE_NAME' VM_REPO=\"\$(pwd)\" bash '$REMOTE_HELPER_SCRIPT'"
+
+if [[ "$SYNC_VM_SNAPSHOTS" == "1" ]]; then
+  require_file "$SYNC_WORKER_SCRIPT"
+  if [[ ! -x "$SYNC_WORKER_SCRIPT" ]]; then
+    chmod +x "$SYNC_WORKER_SCRIPT"
+  fi
+  log "Starting VM snapshot autosync worker (every CLASSSEARCH_POLL_INTERVAL seconds)"
+  VM_REPO="$VM_REPO" \
+  VM_USER="$VM_USER" \
+  VM_IP="$VM_IP" \
+  SSH_KEY="$SSH_KEY" \
+  REMOTE_REPO="$REMOTE_REPO" \
+  LOCAL_SNAPSHOTS_DIR="$LOCAL_SNAPSHOTS_DIR" \
+  "$SYNC_WORKER_SCRIPT" restart
+fi
 
 log "Done"
