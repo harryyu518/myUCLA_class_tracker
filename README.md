@@ -12,7 +12,6 @@ This project:
 - Detects SSO/session-expired pages and alerts once until session is restored
 
 Optional:
-- ClassPlanner monitor (`extract_snippet.py`) with separate polling logic
 
 ## How It Works
 
@@ -108,13 +107,6 @@ This script will:
   pkill -f "monitor_classsearch.py"
   ```
 
-### Optional ClassPlanner Monitor
-
-- Run ClassPlanner monitor:
-  ```bash
-  ./run_monitor.sh
-  ```
-
 ## Run With a VM (Local Login + Remote Monitor)
 
 Use this when you want the monitor process running on a Linux VPS, but still complete UCLA login from your local machine browser.
@@ -182,7 +174,7 @@ This script (from local machine) will:
 - open browser locally for UCLA + Duo
 - save local `storage.json`
 - run local preflight check
-- upload `storage.json` (and optional `.env.local`) to VM
+- upload `storage.json` and `.env.local` to VM (`SYNC_ENV_LOCAL=1` by default)
 - run remote preflight and restart VM service
 
 ### 5) (Optional, for troubleshooting purposes) Pull VM snapshots to local

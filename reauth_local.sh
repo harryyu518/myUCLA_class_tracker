@@ -177,13 +177,9 @@ for raw_line in env_file.read_text(encoding="utf-8").splitlines():
 
 required_non_empty = [
     "CLASSSEARCH_POLL_INTERVAL",
-    "CLASSPLANNER_POLL_INTERVAL",
     "MAX_SNAPSHOTS_TO_KEEP",
     "PLAYWRIGHT_TIMEOUT",
     "PLAYWRIGHT_HEADLESS",
-    "CLASSPLANNER_URL",
-    "CLASSPLANNER_LOGIN_URL",
-    "CLASSPLANNER_CSS_SELECTOR",
     "PUSHOVER_API_URL",
 ]
 
